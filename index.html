@@ -1,17 +1,16 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Jellycat 代購對帳</title>
-  <meta name="description" content="Jellycat 代購對帳工具 — 管理訂單、買家、付款與利潤" />
+  <meta name="description" content="Jellycat 代購對帳工具 — 管理訂單、買家、商品庫、付款與利潤" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Login Screen -->
   <div id="login-screen" class="screen active">
     <div class="login-bg">
       <div class="login-blob blob1"></div>
@@ -37,9 +36,7 @@
     </div>
   </div>
 
-  <!-- Main App -->
   <div id="app-screen" class="screen">
-    <!-- Top Header -->
     <header class="app-header">
       <div class="header-left">
         <span class="header-logo">🐰</span>
@@ -51,7 +48,6 @@
       </div>
     </header>
 
-    <!-- Tab Navigation -->
     <nav class="tab-nav">
       <button class="tab-btn active" data-tab="dashboard" id="tab-dashboard">
         <span class="tab-icon">📊</span>
@@ -60,6 +56,10 @@
       <button class="tab-btn" data-tab="orders" id="tab-orders">
         <span class="tab-icon">📦</span>
         <span class="tab-label">訂單</span>
+      </button>
+      <button class="tab-btn" data-tab="products" id="tab-products">
+        <span class="tab-icon">🏪</span>
+        <span class="tab-label">商品庫</span>
       </button>
       <button class="tab-btn" data-tab="buyers" id="tab-buyers">
         <span class="tab-icon">👥</span>
@@ -71,7 +71,6 @@
       </button>
     </nav>
 
-    <!-- Page Content -->
     <main class="page-content">
       <!-- Dashboard Tab -->
       <div class="tab-page active" id="page-dashboard">
@@ -79,8 +78,6 @@
           <h2 class="page-title">總覽</h2>
           <span class="rate-badge" id="rate-display">💷 1 = NT$50</span>
         </div>
-
-        <!-- Summary Cards -->
         <div class="stat-grid">
           <div class="stat-card purple">
             <div class="stat-icon">💰</div>
@@ -111,8 +108,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Payment Progress -->
         <div class="section-card">
           <h3 class="section-title">💳 付款進度</h3>
           <div class="payment-bar-wrap">
@@ -128,8 +123,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Purchase Status -->
         <div class="section-card">
           <h3 class="section-title">🛍️ 商品購買狀態</h3>
           <div class="status-chips">
@@ -151,8 +144,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Recent Orders -->
         <div class="section-card">
           <div class="section-title-row">
             <h3 class="section-title">🕐 最近訂單</h3>
@@ -168,10 +159,8 @@
       <div class="tab-page" id="page-orders">
         <div class="page-header">
           <h2 class="page-title">訂單列表</h2>
-          <button class="add-btn" id="add-order-btn">＋ 新增</button>
+          <button class="add-btn" id="add-order-btn">＋ 新增代購單</button>
         </div>
-
-        <!-- Filter -->
         <div class="filter-bar">
           <button class="filter-chip active" data-filter="all">全部</button>
           <button class="filter-chip" data-filter="pending">待購</button>
@@ -182,11 +171,27 @@
         <div class="search-wrap">
           <input type="text" id="order-search" class="search-input" placeholder="🔍 搜尋買家或商品名稱…" />
         </div>
-
         <div id="orders-list" class="orders-list">
           <div class="empty-state">
             <div class="empty-icon">📦</div>
             <p>還沒有訂單，點右上角新增！</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Products Tab -->
+      <div class="tab-page" id="page-products">
+        <div class="page-header">
+          <h2 class="page-title">商品庫</h2>
+          <button class="add-btn" id="add-product-btn">＋ 新增商品</button>
+        </div>
+        <div class="search-wrap">
+          <input type="text" id="product-search" class="search-input" placeholder="🔍 搜尋商品…" />
+        </div>
+        <div id="products-list" class="products-list">
+          <div class="empty-state">
+            <div class="empty-icon">🏪</div>
+            <p>還沒有商品，點右上角新增！</p>
           </div>
         </div>
       </div>
@@ -233,8 +238,6 @@
     </main>
   </div>
 
-  <!-- ============ MODALS ============ -->
-
   <!-- Settings Modal -->
   <div class="modal-overlay" id="settings-modal">
     <div class="modal-sheet">
@@ -263,42 +266,103 @@
     </div>
   </div>
 
-  <!-- Add/Edit Order Modal -->
-  <div class="modal-overlay" id="order-modal">
+  <!-- Add/Edit Product Modal -->
+  <div class="modal-overlay" id="product-modal">
     <div class="modal-sheet">
       <div class="modal-header">
-        <h3 id="order-modal-title">📦 新增訂單</h3>
-        <button class="modal-close" data-modal="order-modal">✕</button>
+        <h3 id="product-modal-title">🏪 新增商品</h3>
+        <button class="modal-close" data-modal="product-modal">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">買家 <span class="required">*</span></label>
-          <select id="order-buyer" class="form-input form-select">
-            <option value="">-- 選擇買家 --</option>
-          </select>
-        </div>
-        <div class="form-group">
           <label class="form-label">商品名稱 <span class="required">*</span></label>
-          <input type="text" id="order-product" class="form-input" placeholder="e.g. Bashful Beige Bunny Medium" />
+          <input type="text" id="product-name" class="form-input" placeholder="e.g. Bashful Beige Bunny Medium" />
         </div>
         <div class="form-group">
-          <label class="form-label">商品尺寸 / 款式</label>
-          <input type="text" id="order-variant" class="form-input" placeholder="e.g. Medium / 粉色" />
+          <label class="form-label">尺寸 / 款式</label>
+          <input type="text" id="product-variant" class="form-input" placeholder="e.g. Medium / 粉色" />
         </div>
         <div class="form-group">
           <label class="form-label">英鎊標價 (£) <span class="required">*</span></label>
-          <input type="number" id="order-gbp" class="form-input" placeholder="e.g. 25" min="0" step="0.01" />
-          <p class="form-hint" id="order-cost-hint">成本：NT$0（依目前匯率）</p>
+          <input type="number" id="product-gbp" class="form-input" placeholder="e.g. 25" min="0" step="0.01" />
+          <p class="form-hint" id="product-cost-hint">成本：NT$0（依目前匯率）</p>
         </div>
         <div class="form-group">
-          <label class="form-label">售價（台幣）<span class="required">*</span></label>
-          <input type="number" id="order-twd" class="form-input" placeholder="e.g. 1600" min="0" />
-          <p class="form-hint" id="order-profit-hint">利潤：NT$0</p>
+          <label class="form-label">建議售價（台幣）<span class="required">*</span></label>
+          <input type="number" id="product-twd" class="form-input" placeholder="e.g. 1600" min="0" />
+          <p class="form-hint" id="product-profit-hint">利潤：NT$0</p>
         </div>
         <div class="form-group">
-          <label class="form-label">數量</label>
-          <input type="number" id="order-qty" class="form-input" value="1" min="1" />
+          <label class="form-label">備註</label>
+          <textarea id="product-notes" class="form-input form-textarea" placeholder="商品備註…" rows="2"></textarea>
         </div>
+        <div class="modal-actions">
+          <button class="danger-btn" id="delete-product-btn" style="display:none">刪除</button>
+          <button class="primary-btn" id="save-product-btn">儲存商品</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Order Modal -->
+  <div class="modal-overlay" id="order-modal">
+    <div class="modal-sheet modal-sheet-tall">
+      <div class="modal-header">
+        <h3 id="order-modal-title">📦 新增代購單</h3>
+        <button class="modal-close" data-modal="order-modal">✕</button>
+      </div>
+      <div class="modal-body" id="order-modal-body">
+
+        <div class="form-section-label">👤 買家資訊</div>
+        <div class="form-group">
+          <label class="form-label">電話 <span class="required">*</span></label>
+          <div class="phone-autocomplete-wrap">
+            <input type="tel" id="order-phone" class="form-input" placeholder="輸入電話自動帶入買家資訊" autocomplete="off" />
+            <div id="phone-suggestions" class="phone-suggestions"></div>
+          </div>
+        </div>
+        <div id="buyer-autofill-card" class="buyer-autofill-card" style="display:none">
+          <div class="autofill-row">
+            <span class="autofill-avatar" id="autofill-avatar">?</span>
+            <div class="autofill-info">
+              <div class="autofill-name" id="autofill-name">—</div>
+              <div class="autofill-sub" id="autofill-contact">—</div>
+              <div class="autofill-sub" id="autofill-address">—</div>
+            </div>
+            <button class="autofill-clear" id="autofill-clear-btn" title="清除">✕</button>
+          </div>
+        </div>
+        <div id="buyer-new-fields" class="buyer-new-fields" style="display:none">
+          <div class="form-group">
+            <label class="form-label">買家名稱 <span class="required">*</span></label>
+            <input type="text" id="order-new-buyer-name" class="form-input" placeholder="e.g. 小美" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">LINE / IG / 聯絡方式</label>
+            <input type="text" id="order-new-buyer-contact" class="form-input" placeholder="e.g. @mei_jellycat" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">收貨地址</label>
+            <input type="text" id="order-new-buyer-address" class="form-input" placeholder="e.g. 台北市..." />
+          </div>
+        </div>
+
+        <div class="form-section-label">🛍️ 選取商品</div>
+        <div class="product-picker-wrap">
+          <input type="text" id="product-picker-search" class="form-input" placeholder="🔍 搜尋商品庫…" autocomplete="off" />
+          <div id="product-picker-list" class="product-picker-list"></div>
+        </div>
+
+        <div id="order-items-container" class="order-items-container" style="display:none">
+          <div class="form-section-label">🛒 已選商品</div>
+          <div id="order-items-list" class="order-items-list"></div>
+          <div class="order-items-total">
+            <span>小計：</span>
+            <span id="order-items-total-text">NT$0 (£0)</span>
+          </div>
+        </div>
+
+        <div class="form-section-label">⚙️ 訂單設定</div>
         <div class="form-group">
           <label class="form-label">購買狀態</label>
           <select id="order-status" class="form-input form-select">
@@ -316,7 +380,7 @@
             <option value="paid">✅ 已全額付清</option>
           </select>
         </div>
-        <div class="form-group" id="deposit-amount-group">
+        <div class="form-group" id="deposit-amount-group" style="display:none">
           <label class="form-label">訂金金額（台幣）</label>
           <input type="number" id="order-deposit" class="form-input" placeholder="e.g. 500" min="0" />
         </div>
@@ -325,8 +389,8 @@
           <textarea id="order-notes" class="form-input form-textarea" placeholder="任何備註…" rows="2"></textarea>
         </div>
         <div class="modal-actions">
-          <button class="danger-btn" id="delete-order-btn" style="display:none">刪除</button>
-          <button class="primary-btn" id="save-order-btn">儲存</button>
+          <button class="danger-btn" id="delete-order-btn" style="display:none">刪除訂單</button>
+          <button class="primary-btn" id="save-order-btn">新增代購單</button>
         </div>
       </div>
     </div>
@@ -380,10 +444,7 @@
     </div>
   </div>
 
-  <!-- Toast -->
   <div id="toast" class="toast"></div>
-
-  <!-- Firebase SDKs -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
