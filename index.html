@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
@@ -242,20 +242,34 @@
   <div class="modal-overlay" id="settings-modal">
     <div class="modal-sheet">
       <div class="modal-header">
-        <h3>⚙️ 系統設定</h3>
+        <h3>⚙️ 匯率與系統設定</h3>
         <button class="modal-close" data-modal="settings-modal">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">💷 匯率設定（1英鎊 = ?台幣）</label>
-          <div class="rate-input-row">
-            <input type="number" id="rate-input" class="form-input" value="50" min="1" step="0.5" />
-            <button class="fetch-rate-btn" id="fetch-rate-btn">抓即時匯率</button>
+          <label class="form-label">🏷️ 客戶代購報價匯率（算給客戶的）</label>
+          <div class="input-suffix-wrap">
+            <input type="number" id="quote-rate-input" class="form-input" value="50" min="1" step="0.5" />
+            <span class="input-suffix">NT$/£</span>
           </div>
-          <p class="form-hint" id="rate-hint">目前設定：1 GBP = NT$50</p>
+          <p class="form-hint">用來計算商品的台幣售價（例：1 英鎊算客戶 50 台幣）</p>
         </div>
         <div class="form-group">
-          <label class="form-label">🏷️ 預設訂金比例</label>
+          <label class="form-label">💷 實際採購成本匯率（實際刷卡/買進）</label>
+          <div class="rate-input-row">
+            <input type="number" id="cost-rate-input" class="form-input" value="41.5" min="1" step="0.1" />
+            <button class="fetch-rate-btn" id="fetch-rate-btn">抓即時匯率</button>
+          </div>
+          <p class="form-hint" id="cost-rate-hint">實際向官網/門市採購的成本匯率</p>
+        </div>
+        <div class="detail-card" style="background:rgba(124,58,237,0.12);border-color:rgba(124,58,237,0.3);margin-bottom:16px">
+          <div class="detail-row">
+            <span class="detail-lbl">💡 每英鎊匯差利潤：</span>
+            <span id="rate-diff-hint" style="color:var(--green);font-weight:900;font-size:15px">+NT$8.5 / £</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">💰 預設訂金比例</label>
           <div class="input-suffix-wrap">
             <input type="number" id="deposit-ratio-input" class="form-input" value="30" min="0" max="100" />
             <span class="input-suffix">%</span>

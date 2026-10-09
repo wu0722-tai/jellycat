@@ -22,7 +22,7 @@ const firebaseConfig = {
 // App State
 let app, auth, db;
 let currentUser = null;
-let settings = { rate: 50, depositRatio: 30 };
+let settings = { quoteRate: 50, costRate: 41.5, depositRatio: 30 };
 let buyers = [];
 let orders = [];
 let products = [];
@@ -98,6 +98,9 @@ async function loadData() {
     const snap = await getDocs(collection(db, 'users', currentUser.uid, 'settings'));
     snap.forEach(d => { if (d.id === 'main') Object.assign(settings, d.data()); });
   } catch {}
+  if (settings.rate && !settings.quoteRate) settings.quoteRate = settings.rate;
+  if (!settings.quoteRate) settings.quoteRate = 50;
+  if (!settings.costRate) settings.costRate = 41.5;
   updateRateDisplay();
   unsubscribers.push(onSnapshot(query(getUserPath('buyers'), orderBy('name')), snap => {
     buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -172,6 +175,9 @@ function loadLocalData() {
       Object.assign(settings, d.settings || {});
     }
   } catch {}
+  if (settings.rate && !settings.quoteRate) settings.quoteRate = settings.rate;
+  if (!settings.quoteRate) settings.quoteRate = 50;
+  if (!settings.costRate) settings.costRate = 41.5;
   updateRateDisplay(); renderAll();
 }
 function saveLocalData() {
@@ -194,17 +200,40 @@ window.switchTab = switchTab;
 
 // Settings
 document.getElementById('settings-btn').addEventListener('click', () => {
-  document.getElementById('rate-input').value = settings.rate;
-  document.getElementById('deposit-ratio-input').value = settings.depositRatio;
-  document.getElementById('rate-hint').textContent = `目前設定：1 GBP = NT$${settings.rate}`;
+  document.getElementById('quote-rate-input').value = settings.quoteRate || 50;
+  document.getElementById('cost-rate-input').value = settings.costRate || 41.5;
+  document.getElementById('deposit-ratio-input').value = settings.depositRatio || 30;
+  updateSettingsDiffHint();
   openModal('settings-modal');
 });
-document.getElementById('save-settings-btn').addEventListener('click', async () => {
-  settings.rate = parseFloat(document.getElementById('rate-input').value) || 50;
-  settings.depositRatio = parseInt(document.getElementById('deposit-ratio-input').value) || 30;
-  await saveSettings(); updateRateDisplay(); renderAll(); closeModal('settings-modal');
-  showToast('設定已儲存 ✅');
+
+function updateSettingsDiffHint() {
+  const q = parseFloat(document.getElementById('quote-rate-input').value) || 50;
+  const c = parseFloat(document.getElementById('cost-rate-input').value) || 41.5;
+  const diff = (q - c).toFixed(1);
+  const elem = document.getElementById('rate-diff-hint');
+  if (elem) {
+    elem.textContent = `${diff >= 0 ? '+' : ''}NT$${diff} / £`;
+    elem.style.color = diff >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+}
+
+['quote-rate-input', 'cost-rate-input'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateSettingsDiffHint);
 });
+
+document.getElementById('save-settings-btn').addEventListener('click', async () => {
+  settings.quoteRate = parseFloat(document.getElementById('quote-rate-input').value) || 50;
+  settings.costRate = parseFloat(document.getElementById('cost-rate-input').value) || 41.5;
+  settings.depositRatio = parseInt(document.getElementById('deposit-ratio-input').value) || 30;
+  await saveSettings();
+  updateRateDisplay();
+  renderAll();
+  closeModal('settings-modal');
+  showToast('匯率設定已儲存 ✅');
+});
+
 document.getElementById('fetch-rate-btn').addEventListener('click', async () => {
   const btn = document.getElementById('fetch-rate-btn');
   btn.textContent = '抓取中…';
@@ -214,18 +243,25 @@ document.getElementById('fetch-rate-btn').addEventListener('click', async () => 
     const rate = data.rates && data.rates.TWD;
     if (rate) {
       const r = Math.round(rate * 10) / 10;
-      document.getElementById('rate-input').value = r;
-      document.getElementById('rate-hint').textContent = `即時匯率：1 GBP = NT$${r}`;
-      showToast(`抓到即時匯率 £1 = NT$${r} 🎉`);
+      document.getElementById('cost-rate-input').value = r;
+      document.getElementById('cost-rate-hint').textContent = `即時市場匯率：1 GBP = NT$${r}`;
+      updateSettingsDiffHint();
+      showToast(`已抓取即時採購成本匯率 £1 = NT$${r} 🎉`);
     } else throw new Error('no rate');
-  } catch { showToast('抓取失敗，請手動輸入'); }
+  } catch {
+    showToast('抓取失敗，請手動輸入');
+  }
   btn.textContent = '抓即時匯率';
 });
+
 function updateRateDisplay() {
-  document.getElementById('rate-display').textContent = `💷 1 = NT$${settings.rate}`;
-  document.getElementById('rate-hint').textContent = `目前設定：1 GBP = NT$${settings.rate}`;
-  const ri = document.getElementById('rate-input');
-  if (ri) ri.value = settings.rate;
+  const q = settings.quoteRate || 50;
+  const c = settings.costRate || 41.5;
+  const diff = (q - c).toFixed(1);
+  const disp = document.getElementById('rate-display');
+  if (disp) {
+    disp.innerHTML = `💷 代購 £1=NT$${q} · 成本 ${c} <span style="color:var(--green);font-weight:800">(+NT$${diff}/£)</span>`;
+  }
 }
 
 // Helpers
@@ -234,8 +270,9 @@ function getOrderRevenue(o) {
   return (o.twd||0)*(o.qty||1);
 }
 function getOrderCost(o) {
-  if (o.items && Array.isArray(o.items)) return o.items.reduce((s, i) => s + (i.gbp||0)*settings.rate*(i.qty||1), 0);
-  return (o.gbp||0)*settings.rate*(o.qty||1);
+  const costRate = settings.costRate || 41.5;
+  if (o.items && Array.isArray(o.items)) return o.items.reduce((s, i) => s + (i.gbp||0)*costRate*(i.qty||1), 0);
+  return (o.gbp||0)*costRate*(o.qty||1);
 }
 function getOrderGbp(o) {
   if (o.items && Array.isArray(o.items)) return o.items.reduce((s, i) => s + (i.gbp||0)*(i.qty||1), 0);
@@ -310,6 +347,7 @@ function renderOrders() {
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${orders.length===0?'還沒有訂單，點右上角新增！':'沒有符合的訂單'}</p></div>`;
     return;
   }
+  const costRate = settings.costRate || 41.5;
   list.innerHTML = filtered.map(o => {
     const buyer = buyers.find(b => b.id===o.buyerId);
     const cost = getOrderCost(o), rev = getOrderRevenue(o), profit = rev-cost;
@@ -324,7 +362,7 @@ function renderOrders() {
         <div class="order-badges"><span class="badge ${o.status||'pending'}">${statusLabel(o.status)}</span><span class="badge ${o.payment||'unpaid'}">${paymentLabel(o.payment)}</span></div>
       </div>
       <div class="order-row3" style="display:flex;justify-content:space-between">
-        <span class="order-gbp">£${getOrderGbp(o).toFixed(2)} → 成本 NT$${Math.round(cost).toLocaleString()}</span>
+        <span class="order-gbp">£${getOrderGbp(o).toFixed(2)} → 採購成本 NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate})</span>
         <span style="color:${pColor};font-weight:800;font-size:11px">利潤 NT$${Math.round(profit).toLocaleString()}</span>
       </div>
       ${o.deposit&&o.payment==='deposit'?`<div class="order-row3" style="color:var(--yellow)">💛 已付訂金 NT$${parseFloat(o.deposit).toLocaleString()}</div>`:''}
@@ -350,18 +388,19 @@ function renderProducts() {
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">🏪</div><p>${products.length===0?'還沒有商品，點右上角新增！':'沒有符合的商品'}</p></div>`;
     return;
   }
+  const costRate = settings.costRate || 41.5;
   list.innerHTML = filtered.map(p => {
-    const cost=(p.gbp||0)*settings.rate, profit=(p.twd||0)-cost;
+    const cost=(p.gbp||0)*costRate, profit=(p.twd||0)-cost;
     const pColor = profit>=0?'var(--green)':'var(--red)';
     return `<div class="product-card" onclick="openEditProduct('${p.id}')">
       <div class="product-card-left">
         <div class="product-name">${escapeHtml(p.name||'')}${p.variant?` <span class="product-variant">${escapeHtml(p.variant)}</span>`:''}</div>
         <div class="product-price-row">
           <span class="product-gbp">£${p.gbp||0}</span>
-          <span class="product-arrow">→</span>
+          <span class="product-arrow">→ 售價</span>
           <span class="product-twd">NT$${(p.twd||0).toLocaleString()}</span>
         </div>
-        <div class="product-meta">成本 NT$${Math.round(cost).toLocaleString()} · <span style="color:${pColor}">利潤 NT$${Math.round(profit).toLocaleString()}</span></div>
+        <div class="product-meta">成本 NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate}) · <span style="color:${pColor};font-weight:800">利潤 NT$${Math.round(profit).toLocaleString()}</span></div>
         ${p.notes?`<div class="product-notes">📝 ${escapeHtml(p.notes)}</div>`:''}
       </div>
       <button class="add-to-order-btn" onclick="event.stopPropagation();quickAddToNewOrder('${p.id}')">＋ 加入代購單</button>
@@ -396,16 +435,22 @@ window.openEditProduct=openEditProduct;
 function updateProductHints() {
   const gbp=parseFloat(document.getElementById('product-gbp').value)||0;
   const twd=parseFloat(document.getElementById('product-twd').value)||0;
-  const cost=gbp*settings.rate, profit=twd-cost;
-  document.getElementById('product-cost-hint').textContent=`成本：NT$${Math.round(cost).toLocaleString()}（依匯率 £1=NT$${settings.rate}）`;
-  document.getElementById('product-profit-hint').textContent=`利潤：NT$${Math.round(profit).toLocaleString()}`;
-  document.getElementById('product-profit-hint').style.color=profit>=0?'var(--green)':'var(--red)';
+  const costRate = settings.costRate || 41.5;
+  const quoteRate = settings.quoteRate || 50;
+  const cost = gbp * costRate;
+  const profit = twd - cost;
+  const diff = (quoteRate - costRate).toFixed(1);
+  document.getElementById('product-cost-hint').textContent=`採購成本：NT$${Math.round(cost).toLocaleString()}（依成本匯率 £1=NT$${costRate}）`;
+  const profitHint = document.getElementById('product-profit-hint');
+  profitHint.textContent=`預估利潤：NT$${Math.round(profit).toLocaleString()}（每 £ 賺 NT$${diff} 匯差）`;
+  profitHint.style.color=profit>=0?'var(--green)':'var(--red)';
 }
 ['product-gbp','product-twd'].forEach(id=>document.getElementById(id).addEventListener('input',updateProductHints));
 document.getElementById('product-gbp').addEventListener('input',()=>{
   const gbp=parseFloat(document.getElementById('product-gbp').value)||0;
+  const quoteRate = settings.quoteRate || 50;
   if(gbp>0&&!document.getElementById('product-twd').value)
-    document.getElementById('product-twd').value=Math.ceil(gbp*settings.rate/50)*50;
+    document.getElementById('product-twd').value=Math.round(gbp*quoteRate);
   updateProductHints();
 });
 
