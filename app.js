@@ -11,12 +11,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyPLACEHOLDER",
-  authDomain: "jellycat-proxy.firebaseapp.com",
-  projectId: "jellycat-proxy",
-  storageBucket: "jellycat-proxy.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:placeholder"
+  apiKey: "AIzaSyCczhSbLa_cHzO3_I9X5GVGkwSGLz27zco",
+  authDomain: "jellycat-32a1d.firebaseapp.com",
+  projectId: "jellycat-32a1d",
+  storageBucket: "jellycat-32a1d.firebasestorage.app",
+  messagingSenderId: "390102986960",
+  appId: "1:390102986960:web:dd2bcb7f526104fd612ed5",
+  measurementId: "G-22YFNS3KLZ"
 };
 
 // App State
@@ -41,37 +42,49 @@ let buyerSearch = '';
 let productSearch = '';
 
 // Init Firebase
-const isPlaceholderConfig = firebaseConfig.apiKey === 'AIzaSyPLACEHOLDER';
-const isFileProtocol = location.protocol === 'file:';
-
-if (!isPlaceholderConfig && !isFileProtocol) {
-  try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    onAuthStateChanged(auth, user => {
-      if (user) { currentUser = user; showApp(); loadData(); }
-      else { currentUser = null; showLogin(); cleanup(); }
-    });
-  } catch (e) { console.warn('Firebase init failed:', e.message); }
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      currentUser = user;
+      showApp();
+      loadData();
+    } else {
+      currentUser = null;
+      showLogin();
+      cleanup();
+    }
+  });
+} catch (e) {
+  console.warn('Firebase init error:', e.message);
 }
 
 // Auth
 const loginBtn = document.getElementById('google-login-btn');
-if (isPlaceholderConfig || isFileProtocol) {
-  loginBtn.innerHTML = '🐰 直接進入（Demo 模式）';
-  loginBtn.addEventListener('click', () => showDemoMode());
-} else {
-  loginBtn.addEventListener('click', async () => {
-    if (!auth) { showDemoMode(); return; }
-    loginBtn.disabled = true;
-    try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-    } catch (e) {
-      showToast('登入失敗，進入 Demo 模式'); showDemoMode();
-    } finally { loginBtn.disabled = false; }
-  });
-}
+loginBtn.addEventListener('click', async () => {
+  if (location.protocol === 'file:') {
+    showToast('💡 提示：本機檔案模式直接進入，部署到網站後即可使用 Google 雲端同步');
+    showDemoMode();
+    return;
+  }
+  if (!auth) {
+    showDemoMode();
+    return;
+  }
+  loginBtn.disabled = true;
+  try {
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  } catch (e) {
+    console.error('Login error:', e);
+    showToast(`登入失敗（${e.message || '請確認 Firebase 已啟用 Google 登入'}），為您切換至離線模式`);
+    showDemoMode();
+  } finally {
+    loginBtn.disabled = false;
+  }
+});
 
 document.getElementById('logout-btn').addEventListener('click', async () => {
   if (confirm('確定要登出嗎？')) { if (auth) await signOut(auth); else showLogin(); }
