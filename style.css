@@ -691,14 +691,32 @@ html, body {
   background: rgba(255,255,255,0.02); border: 1px solid var(--card-border);
   border-radius: var(--radius-sm); padding: 12px; margin-bottom: 16px;
 }
-.order-items-list { display: flex; flex-direction: column; gap: 8px; }
-.order-item-row {
-  display: flex; align-items: center; gap: 10px;
-  background: var(--bg3); border-radius: 8px; padding: 8px 10px;
+.order-items-list { display: flex; flex-direction: column; gap: 10px; }
+
+/* New block layout per product */
+.order-item-block {
+  background: var(--bg3); border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--card-border);
+}
+.order-item-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
 }
 .order-item-main { flex: 1; min-width: 0; }
 .order-item-title { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .order-item-sub { font-size: 11px; color: var(--text-muted); }
+
+/* Inline price edit */
+.order-item-price-edit {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.inline-price-input {
+  width: 72px; background: rgba(0,0,0,0.3); border: 1px solid var(--card-border);
+  color: var(--text); border-radius: 6px; padding: 3px 6px; font-size: 12px;
+  font-weight: 800; text-align: center; font-family: inherit;
+}
+.inline-price-input:focus { outline: none; border-color: var(--purple-light); }
+
 .order-item-qty-ctrl {
   display: flex; align-items: center; gap: 6px;
   background: rgba(0,0,0,0.25); border-radius: 6px; padding: 2px 4px;
@@ -710,12 +728,67 @@ html, body {
 }
 .qty-btn:hover { background: rgba(255,255,255,0.1); }
 .qty-val { font-size: 12px; font-weight: 800; min-width: 16px; text-align: center; }
-.order-item-price { font-size: 13px; font-weight: 900; color: var(--purple-light); white-space: nowrap; }
 .order-item-del {
   background: transparent; border: none; color: var(--text-dim);
   font-size: 12px; cursor: pointer; padding: 4px;
 }
 .order-item-del:hover { color: var(--red); }
+
+/* Per-unit purchase rows */
+.unit-rows-container {
+  border-top: 1px solid rgba(255,255,255,0.05);
+  padding: 4px 10px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.unit-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 6px; border-radius: 7px;
+  background: rgba(255,255,255,0.03);
+  cursor: pointer; transition: background 0.2s;
+}
+.unit-row:hover { background: rgba(255,255,255,0.07); }
+.unit-row.purchased { background: rgba(46,213,115,0.08); }
+.unit-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+/* Toggle switch */
+.toggle-switch {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+}
+.toggle-switch input { display: none; }
+.toggle-slider {
+  position: relative; width: 36px; height: 20px;
+  background: rgba(255,255,255,0.1); border-radius: 10px;
+  transition: background 0.25s; flex-shrink: 0;
+}
+.toggle-slider::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; transition: transform 0.25s;
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--green, #2ed573);
+}
+.toggle-switch input:checked + .toggle-slider::after {
+  transform: translateX(16px);
+}
+.toggle-text { font-size: 11px; font-weight: 700; color: var(--text-muted); min-width: 36px; }
+.toggle-switch input:checked ~ .toggle-text { color: var(--green, #2ed573); }
+
+/* Progress mini */
+.purchase-progress {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px 7px; border-top: 1px solid rgba(255,255,255,0.04);
+}
+.progress-bar-mini {
+  flex: 1; height: 4px; background: rgba(255,255,255,0.08);
+  border-radius: 2px; overflow: hidden;
+}
+.progress-fill-mini {
+  height: 100%; background: var(--green, #2ed573);
+  border-radius: 2px; transition: width 0.3s ease;
+}
+.progress-text { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+
 .order-items-total {
   display: flex; justify-content: space-between; align-items: center;
   margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--card-border);

@@ -1126,43 +1126,107 @@ function renderOrderItems() {
     return;
   }
   container.style.display = 'block';
-  
+
   let totalTwd = 0;
   let totalGbp = 0;
-  
+  let totalPurchased = 0;
+  let totalUnits = 0;
+
   list.innerHTML = orderItems.map((item, idx) => {
-    const itemTotalTwd = (item.twd || 0) * (item.qty || 1);
-    const itemTotalGbp = (item.gbp || 0) * (item.qty || 1);
+    const qty = item.qty || 1;
+    const pqty = item.purchasedQty || 0;
+    const itemTotalTwd = (item.twd || 0) * qty;
+    const itemTotalGbp = (item.gbp || 0) * qty;
     totalTwd += itemTotalTwd;
     totalGbp += itemTotalGbp;
+    totalPurchased += pqty;
+    totalUnits += qty;
     const hasDiffCost = (item.costGbp !== undefined && item.costGbp !== null && item.costGbp > 0 && Math.abs(item.costGbp - (item.gbp || 0)) > 0.001);
-    
+
+    // Build per-unit toggle rows
+    let unitRows = '';
+    for (let u = 0; u < qty; u++) {
+      const isPurchased = u < pqty;
+      unitRows += `
+        <div class="unit-row ${isPurchased ? 'purchased' : ''}" onclick="toggleUnitPurchase(${idx}, ${u})">
+          <span class="unit-label">${qty > 1 ? `第 ${u + 1}/${qty}` : '此商品'}</span>
+          <label class="toggle-switch" onclick="event.stopPropagation()">
+            <input type="checkbox" ${isPurchased ? 'checked' : ''} onchange="toggleUnitPurchase(${idx}, ${u})">
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">${isPurchased ? '已購買' : '待購買'}</span>
+          </label>
+        </div>`;
+    }
+
     return `
-      <div class="order-item-row">
-        <div class="order-item-main">
-          <div class="order-item-title">${escapeHtml(item.name || '')}${item.variant ? ` <span class="product-variant">${escapeHtml(item.variant)}</span>` : ''}</div>
-          <div class="order-item-sub">£${item.gbp || 0}${hasDiffCost ? ` (成本 £${item.costGbp})` : ''} / NT$${(item.twd || 0).toLocaleString()} 單價</div>
+      <div class="order-item-block">
+        <div class="order-item-header">
+          <div class="order-item-main">
+            <div class="order-item-title">${escapeHtml(item.name || '')}${item.variant ? ` <span class="product-variant">${escapeHtml(item.variant)}</span>` : ''}</div>
+            <div class="order-item-sub">£${item.gbp || 0}${hasDiffCost ? ` (成本 £${item.costGbp})` : ''}</div>
+          </div>
+          <div class="order-item-price-edit">
+            <span style="font-size:10px;color:var(--text-dim)">售價</span>
+            <input type="number" class="inline-price-input" value="${item.twd || 0}" onchange="updateItemPrice(${idx}, this.value)" onclick="event.stopPropagation()" />
+          </div>
+          <div class="order-item-qty-ctrl">
+            <button type="button" class="qty-btn" onclick="updateOrderItemQty(${idx}, -1)">−</button>
+            <span class="qty-val">${qty}</span>
+            <button type="button" class="qty-btn" onclick="updateOrderItemQty(${idx}, 1)">＋</button>
+          </div>
+          <button type="button" class="order-item-del" onclick="removeOrderItem(${idx})" title="移除">✕</button>
         </div>
-        <div class="order-item-qty-ctrl">
-          <button type="button" class="qty-btn" onclick="updateOrderItemQty(${idx}, -1)">−</button>
-          <span class="qty-val">${item.qty || 1}</span>
-          <button type="button" class="qty-btn" onclick="updateOrderItemQty(${idx}, 1)">＋</button>
+        <div class="unit-rows-container">
+          ${unitRows}
         </div>
-        <div class="order-item-price">NT$${itemTotalTwd.toLocaleString()}</div>
-        <button type="button" class="order-item-del" onclick="removeOrderItem(${idx})" title="移除">✕</button>
+        <div class="purchase-progress">
+          <div class="progress-bar-mini"><div class="progress-fill-mini" style="width:${qty > 0 ? (pqty / qty * 100) : 0}%"></div></div>
+          <span class="progress-text">${pqty}/${qty} 已購買</span>
+        </div>
       </div>
     `;
   }).join('');
-  
-  totalText.textContent = `NT$${totalTwd.toLocaleString()} (£${totalGbp.toFixed(2)})`;
+
+  totalText.innerHTML = `NT$${totalTwd.toLocaleString()} (£${totalGbp.toFixed(2)}) <span style="margin-left:8px;font-size:11px;color:${totalPurchased >= totalUnits ? 'var(--green)' : 'var(--orange)'}">📦 ${totalPurchased}/${totalUnits} 已購</span>`;
 }
 window.renderOrderItems = renderOrderItems;
 
+function toggleUnitPurchase(itemIdx, unitIdx) {
+  if (!orderItems[itemIdx]) return;
+  const item = orderItems[itemIdx];
+  const qty = item.qty || 1;
+  const pqty = item.purchasedQty || 0;
+  if (unitIdx < pqty) {
+    // Un-purchase: set purchasedQty to unitIdx
+    item.purchasedQty = unitIdx;
+  } else {
+    // Purchase: set purchasedQty to unitIdx + 1
+    item.purchasedQty = unitIdx + 1;
+  }
+  renderOrderItems();
+}
+window.toggleUnitPurchase = toggleUnitPurchase;
+
+function updateItemPrice(itemIdx, newVal) {
+  if (!orderItems[itemIdx]) return;
+  const twd = parseInt(newVal, 10);
+  if (!isNaN(twd) && twd >= 0) {
+    orderItems[itemIdx].twd = twd;
+  }
+  renderOrderItems();
+}
+window.updateItemPrice = updateItemPrice;
+
 function updateOrderItemQty(index, delta) {
   if (!orderItems[index]) return;
-  orderItems[index].qty = (orderItems[index].qty || 1) + delta;
-  if (orderItems[index].qty <= 0) {
+  const newQty = (orderItems[index].qty || 1) + delta;
+  if (newQty <= 0) {
     orderItems.splice(index, 1);
+  } else {
+    orderItems[index].qty = newQty;
+    if ((orderItems[index].purchasedQty || 0) > newQty) {
+      orderItems[index].purchasedQty = newQty;
+    }
   }
   renderOrderItems();
 }
@@ -1174,6 +1238,11 @@ function removeOrderItem(index) {
   renderOrderItems();
 }
 window.removeOrderItem = removeOrderItem;
+
+function areAllItemsPurchased() {
+  if (!orderItems || orderItems.length === 0) return false;
+  return orderItems.every(i => (i.purchasedQty || 0) >= (i.qty || 1));
+}
 
 // Payment select handler
 document.getElementById('order-payment').addEventListener('change', e => {
@@ -1191,22 +1260,26 @@ document.getElementById('order-payment').addEventListener('change', e => {
 // Save Order
 document.getElementById('save-order-btn').addEventListener('click', async () => {
   const phone = phoneInput.value.trim();
-  if (!phone) {
-    showToast('請輸入買家電話 📱');
-    phoneInput.focus();
-    return;
-  }
   
   let finalBuyerId = selectedBuyerId;
   
-  // If no buyer selected yet, check if phone matches existing buyer
+  // If no buyer selected, try phone or create new
   if (!finalBuyerId) {
-    const existing = buyers.find(b => b.phone === phone);
-    if (existing) {
-      finalBuyerId = existing.id;
-    } else {
-      // Must create a new buyer
+    if (phone) {
+      const existing = buyers.find(b => b.phone === phone);
+      if (existing) {
+        finalBuyerId = existing.id;
+      }
+    }
+    if (!finalBuyerId) {
+      // Check new buyer name
       const newName = document.getElementById('order-new-buyer-name').value.trim();
+      if (!newName && !phone) {
+        document.getElementById('buyer-new-fields').style.display = 'block';
+        showToast('請填寫買家名稱（電話可選填）👤');
+        document.getElementById('order-new-buyer-name').focus();
+        return;
+      }
       if (!newName) {
         document.getElementById('buyer-new-fields').style.display = 'block';
         showToast('此電話為新買家，請填寫買家名稱 👤');
@@ -1215,11 +1288,10 @@ document.getElementById('save-order-btn').addEventListener('click', async () => 
       }
       const newContact = document.getElementById('order-new-buyer-contact').value.trim();
       const newAddress = document.getElementById('order-new-buyer-address').value.trim();
-      
       const newBuyerData = {
         id: Date.now().toString(),
         name: newName,
-        phone: phone,
+        phone: phone || '',
         contact: newContact,
         address: newAddress,
         notes: '',
@@ -1235,6 +1307,12 @@ document.getElementById('save-order-btn').addEventListener('click', async () => 
   }
   
   const status = document.getElementById('order-status').value;
+  // Gate order status: can only move beyond 'pending' if all items purchased
+  if (status !== 'pending' && !areAllItemsPurchased()) {
+    showToast('⚠️ 尚有商品未購買，請先將所有商品標為「已購買」再更改訂單狀態');
+    document.getElementById('order-status').value = 'pending';
+    return;
+  }
   const payment = document.getElementById('order-payment').value;
   const deposit = payment === 'deposit' ? (parseFloat(document.getElementById('order-deposit').value) || 0) : 0;
   const notes = document.getElementById('order-notes').value.trim();
@@ -1429,6 +1507,11 @@ function renderPending() {
     if (o.items && Array.isArray(o.items)) {
       o.items.forEach(item => {
         const costGbp = (item.costGbp !== undefined && item.costGbp !== null && item.costGbp > 0) ? item.costGbp : (item.gbp || 0);
+        const totalQty = item.qty || 1;
+        const purchased = item.purchasedQty || 0;
+        const unpurchased = Math.max(0, totalQty - purchased);
+        if (unpurchased <= 0) return; // Skip fully purchased items
+        
         const key = `${item.productId || item.name}__${item.variant || ''}`;
         if (!agg[key]) {
           agg[key] = {
@@ -1437,13 +1520,17 @@ function renderPending() {
             gbp: item.gbp || 0,
             costGbp: costGbp,
             qty: 0,
+            totalQty: 0,
+            purchasedQty: 0,
             orders: []
           };
         }
-        agg[key].qty += (item.qty || 1);
-        agg[key].orders.push({ orderId: o.id, buyerName: buyer?.name || '未知', qty: item.qty || 1 });
-        totalPendingQty += (item.qty || 1);
-        totalPendingGbp += costGbp * (item.qty || 1);
+        agg[key].qty += unpurchased;
+        agg[key].totalQty += totalQty;
+        agg[key].purchasedQty += purchased;
+        agg[key].orders.push({ orderId: o.id, buyerName: buyer?.name || '未知', qty: unpurchased, totalQty: totalQty, purchased: purchased });
+        totalPendingQty += unpurchased;
+        totalPendingGbp += costGbp * unpurchased;
       });
     } else {
       const costGbp = (o.costGbp !== undefined && o.costGbp !== null && o.costGbp > 0) ? o.costGbp : (o.gbp || 0);
@@ -1455,11 +1542,14 @@ function renderPending() {
           gbp: o.gbp || 0,
           costGbp: costGbp,
           qty: 0,
+          totalQty: 0,
+          purchasedQty: 0,
           orders: []
         };
       }
       agg[key].qty += (o.qty || 1);
-      agg[key].orders.push({ orderId: o.id, buyerName: buyer?.name || '未知', qty: o.qty || 1 });
+      agg[key].totalQty += (o.qty || 1);
+      agg[key].orders.push({ orderId: o.id, buyerName: buyer?.name || '未知', qty: o.qty || 1, totalQty: o.qty || 1, purchased: 0 });
       totalPendingQty += (o.qty || 1);
       totalPendingGbp += costGbp * (o.qty || 1);
     }
@@ -1481,6 +1571,7 @@ function renderPending() {
 
   list.innerHTML = items.map(item => {
     const hasDiffCost = Math.abs(item.costGbp - item.gbp) > 0.001;
+    const progressPct = item.totalQty > 0 ? (item.purchasedQty / item.totalQty * 100) : 0;
     return `
     <div class="product-card">
       <div class="product-card-left">
@@ -1492,12 +1583,16 @@ function renderPending() {
           <span class="product-gbp">£${(item.costGbp * item.qty).toFixed(2)}</span>
           <span class="product-meta">（${hasDiffCost ? `成本 £${item.costGbp} · 標價 £${item.gbp}` : `£${item.gbp}`} × ${item.qty}）</span>
         </div>
-        <div class="product-meta" style="margin-top:6px">
-          買家：${item.orders.map(x => `${escapeHtml(x.buyerName)} (${x.qty})`).join('、')}
+        <div class="product-meta" style="margin-top:4px">
+          買家：${item.orders.map(x => `${escapeHtml(x.buyerName)} (待買${x.qty})`).join('、')}
+        </div>
+        <div class="purchase-progress" style="margin-top:6px">
+          <div class="progress-bar-mini"><div class="progress-fill-mini" style="width:${progressPct}%"></div></div>
+          <span class="progress-text">${item.purchasedQty}/${item.totalQty} 已購</span>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-        <span class="badge pending" style="font-size:14px;padding:6px 12px">需買 ×${item.qty}</span>
+        <span class="badge pending" style="font-size:14px;padding:6px 12px">待買 ×${item.qty}</span>
         <button class="link-btn" style="font-size:11px" onclick="markItemOrdersOrdered('${item.orders.map(o=>o.orderId).join(',')}')">全部標記為已下單</button>
       </div>
     </div>
