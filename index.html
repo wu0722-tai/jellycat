@@ -297,12 +297,20 @@
           <input type="text" id="product-variant" class="form-input" placeholder="e.g. Medium / 粉色" />
         </div>
         <div class="form-group">
-          <label class="form-label">英鎊標價 (£) <span class="required">*</span></label>
+          <label class="form-label">英鎊標價 (£) <span class="required">*</span> <span style="font-size:11px;color:var(--purple-light);font-weight:normal">（官網/專櫃標價，乘上 50 算給客戶）</span></label>
           <div class="input-suffix-wrap">
             <input type="number" id="product-gbp" class="form-input" placeholder="e.g. 25" min="0" step="0.01" />
             <span class="input-suffix">£</span>
           </div>
-          <p class="form-hint">只需輸入英鎊，系統自動以代購匯率（£1 = NT$50）換算客戶台幣價格</p>
+          <p class="form-hint">客戶應付金額 = 英鎊標價 × 50</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">英鎊成本價 (£) <span style="font-size:11px;color:var(--text-dim);font-weight:normal">（選填，若相同可留空）</span></label>
+          <div class="input-suffix-wrap">
+            <input type="number" id="product-cost-gbp" class="form-input" placeholder="若無打折請留空（預設同標價）" min="0" step="0.01" />
+            <span class="input-suffix">£</span>
+          </div>
+          <p class="form-hint">若有折扣特價可填寫，收益 = (標價 × 50) − (成本價 × 採購匯率)</p>
         </div>
         <div class="detail-card" id="product-calc-card" style="background:rgba(124,58,237,0.12);border-color:rgba(124,58,237,0.3);margin-bottom:16px">
           <div class="detail-row">
@@ -310,11 +318,11 @@
             <span id="product-twd-calc" style="color:var(--purple-light);font-size:16px;font-weight:900">NT$0</span>
           </div>
           <div class="detail-row" style="margin-top:6px">
-            <span class="detail-lbl">💷 預估採購成本：</span>
+            <span class="detail-lbl">💷 實際採購成本：</span>
             <span id="product-cost-calc" style="color:var(--text-muted);font-size:13px">NT$0</span>
           </div>
           <div class="detail-row" style="margin-top:6px">
-            <span class="detail-lbl">📈 每件代購利潤：</span>
+            <span class="detail-lbl">📈 每件代購收益：</span>
             <span id="product-profit-calc" style="color:var(--green);font-size:14px;font-weight:800">+NT$0</span>
           </div>
         </div>

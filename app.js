@@ -113,10 +113,10 @@ function getUserPath(col) {
 }
 
 async function loadData() {
-  if (!isCloudMode()) {
-    loadLocalData();
-    return;
-  }
+  loadLocalData();
+
+  if (!isCloudMode()) return;
+
   try {
     const snap = await getDocs(collection(db, 'users', currentUser.uid, 'settings'));
     snap.forEach(d => { if (d.id === 'main') Object.assign(settings, d.data()); });
@@ -129,143 +129,163 @@ async function loadData() {
   updateRateDisplay();
 
   try {
-    unsubscribers.push(onSnapshot(query(getUserPath('buyers'), orderBy('name')), snap => {
-      buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderBuyers(); renderDashboard();
+    unsubscribers.push(onSnapshot(getUserPath('buyers'), snap => {
+      if (!snap.empty) {
+        buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        saveLocalData();
+        renderBuyers(); renderDashboard();
+      }
     }, err => {
-      console.warn('Buyers cloud sync error, using local:', err);
-      loadLocalData();
+      console.warn('Buyers cloud sync error:', err.message);
     }));
 
-    unsubscribers.push(onSnapshot(query(getUserPath('orders'), orderBy('createdAt', 'desc')), snap => {
-      orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderOrders(); renderDashboard(); renderPending();
+    unsubscribers.push(onSnapshot(getUserPath('orders'), snap => {
+      if (!snap.empty) {
+        orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        saveLocalData();
+        renderOrders(); renderDashboard(); renderPending();
+      }
     }, err => {
-      console.warn('Orders cloud sync error, using local:', err);
+      console.warn('Orders cloud sync error:', err.message);
     }));
 
-    unsubscribers.push(onSnapshot(query(getUserPath('products'), orderBy('name')), snap => {
-      products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderProducts(); renderProductPicker();
+    unsubscribers.push(onSnapshot(getUserPath('products'), snap => {
+      if (!snap.empty) {
+        products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        saveLocalData();
+        renderProducts(); renderProductPicker();
+      }
     }, err => {
-      console.warn('Products cloud sync error, using local:', err);
+      console.warn('Products cloud sync error:', err.message);
     }));
   } catch (e) {
-    console.warn('Firestore snapshot setup failed, falling back to local data:', e);
-    loadLocalData();
+    console.warn('Firestore snapshot setup failed:', e);
   }
 }
 
 async function saveBuyer(data) {
   const id = data.id || Date.now().toString();
-  if (isCloudMode()) {
-    try {
-      await setDoc(doc(db, 'users', currentUser.uid, 'buyers', id), { ...data, id });
-      return id;
-    } catch (err) {
-      console.warn('Cloud saveBuyer failed, saving locally:', err);
-    }
-  }
   const idx = buyers.findIndex(b => b.id === id);
   if (idx >= 0) buyers[idx] = { ...data, id }; else buyers.push({ ...data, id });
   saveLocalData();
   renderBuyers();
   renderDashboard();
+
+  if (isCloudMode()) {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'buyers', id), { ...data, id });
+    } catch (err) {
+      console.error('Cloud saveBuyer error:', err);
+      handleCloudError(err);
+    }
+  }
   return id;
 }
 
 async function deleteBuyer(id) {
-  if (isCloudMode()) {
-    try {
-      await deleteDoc(doc(db, 'users', currentUser.uid, 'buyers', id));
-      return;
-    } catch (err) {
-      console.warn('Cloud deleteBuyer failed, deleting locally:', err);
-    }
-  }
   buyers = buyers.filter(b => b.id !== id);
   saveLocalData();
   renderBuyers();
   renderDashboard();
+
+  if (isCloudMode()) {
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'buyers', id));
+    } catch (err) {
+      console.error('Cloud deleteBuyer error:', err);
+      handleCloudError(err);
+    }
+  }
 }
 
 async function saveOrder(data) {
   const id = data.id || Date.now().toString();
   if (!data.createdAt) data.createdAt = Date.now();
-  if (isCloudMode()) {
-    try {
-      await setDoc(doc(db, 'users', currentUser.uid, 'orders', id), { ...data, id });
-      return;
-    } catch (err) {
-      console.warn('Cloud saveOrder failed, saving locally:', err);
-    }
-  }
   const idx = orders.findIndex(o => o.id === id);
   if (idx >= 0) orders[idx] = { ...data, id }; else orders.unshift({ ...data, id });
   saveLocalData();
   renderOrders();
   renderDashboard();
   renderPending();
+
+  if (isCloudMode()) {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'orders', id), { ...data, id });
+    } catch (err) {
+      console.error('Cloud saveOrder error:', err);
+      handleCloudError(err);
+    }
+  }
 }
 
 async function deleteOrder(id) {
-  if (isCloudMode()) {
-    try {
-      await deleteDoc(doc(db, 'users', currentUser.uid, 'orders', id));
-      return;
-    } catch (err) {
-      console.warn('Cloud deleteOrder failed, deleting locally:', err);
-    }
-  }
   orders = orders.filter(o => o.id !== id);
   saveLocalData();
   renderOrders();
   renderDashboard();
   renderPending();
+
+  if (isCloudMode()) {
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'orders', id));
+    } catch (err) {
+      console.error('Cloud deleteOrder error:', err);
+      handleCloudError(err);
+    }
+  }
 }
 
 async function saveProduct(data) {
   const id = data.id || Date.now().toString();
   if (!data.createdAt) data.createdAt = Date.now();
-  if (isCloudMode()) {
-    try {
-      await setDoc(doc(db, 'users', currentUser.uid, 'products', id), { ...data, id });
-      return;
-    } catch (err) {
-      console.warn('Cloud saveProduct failed, saving locally:', err);
-    }
-  }
   const idx = products.findIndex(p => p.id === id);
   if (idx >= 0) products[idx] = { ...data, id }; else products.push({ ...data, id });
   saveLocalData();
   renderProducts();
   renderProductPicker();
+
+  if (isCloudMode()) {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'products', id), { ...data, id });
+    } catch (err) {
+      console.error('Cloud saveProduct error:', err);
+      handleCloudError(err);
+    }
+  }
 }
 
 async function deleteProduct(id) {
-  if (isCloudMode()) {
-    try {
-      await deleteDoc(doc(db, 'users', currentUser.uid, 'products', id));
-      return;
-    } catch (err) {
-      console.warn('Cloud deleteProduct failed, deleting locally:', err);
-    }
-  }
   products = products.filter(p => p.id !== id);
   saveLocalData();
   renderProducts();
   renderProductPicker();
+
+  if (isCloudMode()) {
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'products', id));
+    } catch (err) {
+      console.error('Cloud deleteProduct error:', err);
+      handleCloudError(err);
+    }
+  }
 }
 
 async function saveSettings() {
+  saveLocalData();
   if (isCloudMode()) {
     try {
       await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'main'), settings);
     } catch (err) {
-      console.warn('Cloud saveSettings failed:', err);
+      console.error('Cloud saveSettings error:', err);
+      handleCloudError(err);
     }
   }
-  saveLocalData();
+}
+
+function handleCloudError(err) {
+  if (err && err.code === 'permission-denied') {
+    showToast('⚠️ Firestore 權限尚未開放，資料已安全保存在本機！');
+  }
 }
 
 function loadLocalData() {
@@ -371,14 +391,23 @@ function getOrderRevenue(o) {
   if (o.items && Array.isArray(o.items)) return o.items.reduce((s, i) => s + (i.twd||0)*(i.qty||1), 0);
   return (o.twd||0)*(o.qty||1);
 }
-function getOrderCost(o) {
-  const costRate = settings.costRate || 41.5;
-  if (o.items && Array.isArray(o.items)) return o.items.reduce((s, i) => s + (i.gbp||0)*costRate*(i.qty||1), 0);
-  return (o.gbp||0)*costRate*(o.qty||1);
-}
 function getOrderGbp(o) {
   if (o.items && Array.isArray(o.items)) return o.items.reduce((s, i) => s + (i.gbp||0)*(i.qty||1), 0);
   return (o.gbp||0)*(o.qty||1);
+}
+function getOrderCostGbp(o) {
+  if (o.items && Array.isArray(o.items)) {
+    return o.items.reduce((s, i) => {
+      const c = (i.costGbp !== undefined && i.costGbp !== null && i.costGbp > 0) ? i.costGbp : (i.gbp || 0);
+      return s + c * (i.qty || 1);
+    }, 0);
+  }
+  const c = (o.costGbp !== undefined && o.costGbp !== null && o.costGbp > 0) ? o.costGbp : (o.gbp || 0);
+  return c * (o.qty || 1);
+}
+function getOrderCost(o) {
+  const costRate = settings.costRate || 41.5;
+  return getOrderCostGbp(o) * costRate;
 }
 
 // Dashboard
@@ -454,6 +483,8 @@ function renderOrders() {
     const buyer = buyers.find(b => b.id===o.buyerId);
     const cost = getOrderCost(o), rev = getOrderRevenue(o), profit = rev-cost;
     const pColor = profit>=0 ? 'var(--green)' : 'var(--red)';
+    const sellingGbp = getOrderGbp(o), costGbp = getOrderCostGbp(o);
+    const hasDiffCost = Math.abs(sellingGbp - costGbp) > 0.001;
     const tags = o.items&&o.items.length>0
       ? o.items.map(i=>`<span class="order-item-tag">${escapeHtml(i.name)}${i.variant?` (${escapeHtml(i.variant)})`:''} ×${i.qty||1}</span>`).join('')
       : `<span class="order-item-tag">${escapeHtml(o.product||'')} ×${o.qty||1}</span>`;
@@ -464,7 +495,7 @@ function renderOrders() {
         <div class="order-badges"><span class="badge ${o.status||'pending'}">${statusLabel(o.status)}</span><span class="badge ${o.payment||'unpaid'}">${paymentLabel(o.payment)}</span></div>
       </div>
       <div class="order-row3" style="display:flex;justify-content:space-between">
-        <span class="order-gbp">£${getOrderGbp(o).toFixed(2)} → 採購成本 NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate})</span>
+        <span class="order-gbp">${hasDiffCost ? `標價 £${sellingGbp.toFixed(2)} (成本 £${costGbp.toFixed(2)})` : `£${sellingGbp.toFixed(2)}`} → 採購成本 NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate})</span>
         <span style="color:${pColor};font-weight:800;font-size:11px">利潤 NT$${Math.round(profit).toLocaleString()}</span>
       </div>
       ${o.deposit&&o.payment==='deposit'?`<div class="order-row3" style="color:var(--yellow)">💛 已付訂金 NT$${parseFloat(o.deposit).toLocaleString()}</div>`:''}
@@ -491,18 +522,24 @@ function renderProducts() {
     return;
   }
   const costRate = settings.costRate || 41.5;
+  const quoteRate = settings.quoteRate || 50;
   list.innerHTML = filtered.map(p => {
-    const cost=(p.gbp||0)*costRate, profit=(p.twd||0)-cost;
-    const pColor = profit>=0?'var(--green)':'var(--red)';
+    const costGbp = (p.costGbp !== undefined && p.costGbp !== null && p.costGbp > 0) ? p.costGbp : (p.gbp || 0);
+    const hasDiffCost = (p.costGbp !== undefined && p.costGbp !== null && p.costGbp > 0 && Math.abs(p.costGbp - (p.gbp || 0)) > 0.001);
+    const twdPrice = p.twd || Math.round((p.gbp || 0) * quoteRate);
+    const cost = costGbp * costRate;
+    const profit = twdPrice - cost;
+    const pColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
     return `<div class="product-card" onclick="openEditProduct('${p.id}')">
       <div class="product-card-left">
         <div class="product-name">${escapeHtml(p.name||'')}${p.variant?` <span class="product-variant">${escapeHtml(p.variant)}</span>`:''}</div>
         <div class="product-price-row">
           <span class="product-gbp">£${p.gbp||0}</span>
+          ${hasDiffCost ? `<span class="product-cost-badge" style="font-size:11px;background:rgba(234,179,8,0.15);color:var(--yellow);padding:2px 7px;border-radius:6px;border:1px solid rgba(234,179,8,0.3);font-weight:800">成本 £${p.costGbp}</span>` : ''}
           <span class="product-arrow">→ 售價</span>
-          <span class="product-twd">NT$${(p.twd||0).toLocaleString()}</span>
+          <span class="product-twd">NT$${twdPrice.toLocaleString()}</span>
         </div>
-        <div class="product-meta">成本 NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate}) · <span style="color:${pColor};font-weight:800">利潤 NT$${Math.round(profit).toLocaleString()}</span></div>
+        <div class="product-meta">成本 NT$${Math.round(cost).toLocaleString()} (${hasDiffCost ? `£${costGbp} × ${costRate}` : `£1=NT$${costRate}`}) · <span style="color:${pColor};font-weight:800">利潤 NT$${Math.round(profit).toLocaleString()}</span></div>
         ${p.notes?`<div class="product-notes">📝 ${escapeHtml(p.notes)}</div>`:''}
       </div>
       <button class="add-to-order-btn" onclick="event.stopPropagation();quickAddToNewOrder('${p.id}')">＋ 加入代購單</button>
@@ -516,7 +553,7 @@ document.getElementById('add-product-btn').addEventListener('click', openAddProd
 function openAddProduct() {
   editProductId = null;
   document.getElementById('product-modal-title').textContent = '🏪 新增商品';
-  ['product-name','product-variant','product-gbp','product-notes'].forEach(id => {
+  ['product-name','product-variant','product-gbp','product-cost-gbp','product-notes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -533,6 +570,8 @@ function openEditProduct(id) {
   document.getElementById('product-name').value = p.name || '';
   document.getElementById('product-variant').value = p.variant || '';
   document.getElementById('product-gbp').value = p.gbp || '';
+  const costEl = document.getElementById('product-cost-gbp');
+  if (costEl) costEl.value = (p.costGbp !== undefined && p.costGbp !== null && p.costGbp !== p.gbp) ? p.costGbp : (p.costGbp || '');
   document.getElementById('product-notes').value = p.notes || '';
   document.getElementById('delete-product-btn').style.display = 'block';
   updateProductHints();
@@ -542,33 +581,49 @@ window.openEditProduct = openEditProduct;
 
 function updateProductHints() {
   const gbp = parseFloat(document.getElementById('product-gbp').value) || 0;
+  const costGbpInput = parseFloat(document.getElementById('product-cost-gbp').value);
+  const costGbp = (!isNaN(costGbpInput) && costGbpInput > 0) ? costGbpInput : gbp;
   const costRate = settings.costRate || 41.5;
   const quoteRate = settings.quoteRate || 50;
   const twd = Math.round(gbp * quoteRate);
-  const cost = gbp * costRate;
+  const cost = costGbp * costRate;
   const profit = twd - cost;
-  const diff = (quoteRate - costRate).toFixed(1);
+  const hasDiffCost = (!isNaN(costGbpInput) && costGbpInput > 0 && Math.abs(costGbpInput - gbp) > 0.001);
 
   const twdElem = document.getElementById('product-twd-calc');
   if (twdElem) twdElem.textContent = `NT$${twd.toLocaleString()} (£${gbp} × ${quoteRate})`;
 
   const costElem = document.getElementById('product-cost-calc');
-  if (costElem) costElem.textContent = `NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate})`;
+  if (costElem) {
+    costElem.textContent = hasDiffCost
+      ? `NT$${Math.round(cost).toLocaleString()} (£${costGbp} × ${costRate})`
+      : `NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate})`;
+  }
 
   const profitElem = document.getElementById('product-profit-calc');
   if (profitElem) {
-    profitElem.textContent = `${profit >= 0 ? '+' : ''}NT$${Math.round(profit).toLocaleString()} (每 £ 賺 NT$${diff})`;
+    if (hasDiffCost) {
+      profitElem.textContent = `${profit >= 0 ? '+' : ''}NT$${Math.round(profit).toLocaleString()} (標價£${gbp}×${quoteRate} − 成本£${costGbp}×${costRate})`;
+    } else {
+      const diff = (quoteRate - costRate).toFixed(1);
+      profitElem.textContent = `${profit >= 0 ? '+' : ''}NT$${Math.round(profit).toLocaleString()} (每 £ 賺 NT$${diff})`;
+    }
     profitElem.style.color = profit >= 0 ? 'var(--green)' : 'var(--red)';
   }
 }
 
 document.getElementById('product-gbp').addEventListener('input', updateProductHints);
+const costGbpInputEl = document.getElementById('product-cost-gbp');
+if (costGbpInputEl) costGbpInputEl.addEventListener('input', updateProductHints);
 
 document.getElementById('save-product-btn').addEventListener('click', async () => {
   const name = document.getElementById('product-name').value.trim();
   const gbp = parseFloat(document.getElementById('product-gbp').value);
   if (!name) { showToast('請填寫商品名稱 🏷️'); return; }
   if (!gbp || gbp <= 0) { showToast('請填寫英鎊標價 💷'); return; }
+
+  const costGbpInput = parseFloat(document.getElementById('product-cost-gbp').value);
+  const costGbp = (!isNaN(costGbpInput) && costGbpInput > 0) ? costGbpInput : gbp;
 
   const quoteRate = settings.quoteRate || 50;
   const twd = Math.round(gbp * quoteRate);
@@ -578,6 +633,7 @@ document.getElementById('save-product-btn').addEventListener('click', async () =
     name,
     variant: document.getElementById('product-variant').value.trim(),
     gbp,
+    costGbp,
     twd,
     notes: document.getElementById('product-notes').value.trim(),
     createdAt: editProductId ? (products.find(p => p.id === editProductId)?.createdAt || Date.now()) : Date.now()
@@ -633,8 +689,15 @@ function openAddOrder() {
 function openEditOrder(id) {
   const o=orders.find(x=>x.id===id); if(!o) return;
   editOrderId=id; selectedBuyerId=o.buyerId||null;
-  if(o.items&&Array.isArray(o.items)&&o.items.length>0) orderItems=o.items.map(i=>({...i}));
-  else orderItems=[{productId:o.productId||null,name:o.product||'',variant:o.variant||'',gbp:o.gbp||0,twd:o.twd||0,qty:o.qty||1}];
+  if(o.items&&Array.isArray(o.items)&&o.items.length>0) {
+    orderItems=o.items.map(i=>({
+      ...i,
+      costGbp: (i.costGbp !== undefined && i.costGbp !== null && i.costGbp > 0) ? i.costGbp : (i.gbp || 0)
+    }));
+  } else {
+    const costGbp = (o.costGbp !== undefined && o.costGbp !== null && o.costGbp > 0) ? o.costGbp : (o.gbp || 0);
+    orderItems=[{productId:o.productId||null,name:o.product||'',variant:o.variant||'',gbp:o.gbp||0,costGbp:costGbp,twd:o.twd||0,qty:o.qty||1}];
+  }
   document.getElementById('order-modal-title').textContent='✏️ 編輯代購單';
   const buyer=buyers.find(b=>b.id===o.buyerId);
   if(buyer){document.getElementById('order-phone').value=buyer.phone||'';showAutofillCard(buyer);}
@@ -712,6 +775,7 @@ function handleSmartParse() {
       const p = item.matched;
       const quoteRate = settings.quoteRate || 50;
       const itemTwd = p.twd || Math.round((p.gbp || 0) * quoteRate);
+      const costGbp = (p.costGbp !== undefined && p.costGbp !== null && p.costGbp > 0) ? p.costGbp : (p.gbp || 0);
       
       const existing = orderItems.find(i => i.productId === p.id);
       if (existing) {
@@ -722,6 +786,7 @@ function handleSmartParse() {
           name: p.name || '',
           variant: p.variant || '',
           gbp: p.gbp || 0,
+          costGbp: costGbp,
           twd: itemTwd,
           qty: item.qty
         });
@@ -985,11 +1050,12 @@ function renderProductPicker() {
   const quoteRate = settings.quoteRate || 50;
   container.innerHTML = list.map(p => {
     const twd = p.twd || Math.round((p.gbp || 0) * quoteRate);
+    const hasDiffCost = (p.costGbp !== undefined && p.costGbp !== null && p.costGbp > 0 && Math.abs(p.costGbp - (p.gbp || 0)) > 0.001);
     return `
       <div class="product-picker-item" onclick="addProductToOrder('${p.id}')">
         <div class="picker-item-info">
           <div class="picker-item-name">${escapeHtml(p.name || '')}${p.variant ? ` <span class="product-variant">${escapeHtml(p.variant)}</span>` : ''}</div>
-          <div class="picker-item-prices">£${p.gbp || 0} → NT$${twd.toLocaleString()}</div>
+          <div class="picker-item-prices">£${p.gbp || 0}${hasDiffCost ? ` (成本 £${p.costGbp})` : ''} → NT$${twd.toLocaleString()}</div>
         </div>
         <button type="button" class="picker-add-btn">＋ 加入</button>
       </div>
@@ -1003,6 +1069,7 @@ function addProductToOrder(productId) {
   if (!p) return;
   const quoteRate = settings.quoteRate || 50;
   const itemTwd = p.twd || Math.round((p.gbp || 0) * quoteRate);
+  const costGbp = (p.costGbp !== undefined && p.costGbp !== null && p.costGbp > 0) ? p.costGbp : (p.gbp || 0);
   const existing = orderItems.find(i => i.productId === productId);
   if (existing) {
     existing.qty = (existing.qty || 1) + 1;
@@ -1012,6 +1079,7 @@ function addProductToOrder(productId) {
       name: p.name || '',
       variant: p.variant || '',
       gbp: p.gbp || 0,
+      costGbp: costGbp,
       twd: itemTwd,
       qty: 1
     });
@@ -1038,12 +1106,13 @@ function renderOrderItems() {
     const itemTotalGbp = (item.gbp || 0) * (item.qty || 1);
     totalTwd += itemTotalTwd;
     totalGbp += itemTotalGbp;
+    const hasDiffCost = (item.costGbp !== undefined && item.costGbp !== null && item.costGbp > 0 && Math.abs(item.costGbp - (item.gbp || 0)) > 0.001);
     
     return `
       <div class="order-item-row">
         <div class="order-item-main">
           <div class="order-item-title">${escapeHtml(item.name || '')}${item.variant ? ` <span class="product-variant">${escapeHtml(item.variant)}</span>` : ''}</div>
-          <div class="order-item-sub">£${item.gbp || 0} / NT$${(item.twd || 0).toLocaleString()} 單價</div>
+          <div class="order-item-sub">£${item.gbp || 0}${hasDiffCost ? ` (成本 £${item.costGbp})` : ''} / NT$${(item.twd || 0).toLocaleString()} 單價</div>
         </div>
         <div class="order-item-qty-ctrl">
           <button type="button" class="qty-btn" onclick="updateOrderItemQty(${idx}, -1)">−</button>
@@ -1330,12 +1399,14 @@ function renderPending() {
     const buyer = buyers.find(b => b.id === o.buyerId);
     if (o.items && Array.isArray(o.items)) {
       o.items.forEach(item => {
+        const costGbp = (item.costGbp !== undefined && item.costGbp !== null && item.costGbp > 0) ? item.costGbp : (item.gbp || 0);
         const key = `${item.productId || item.name}__${item.variant || ''}`;
         if (!agg[key]) {
           agg[key] = {
             name: item.name || '',
             variant: item.variant || '',
             gbp: item.gbp || 0,
+            costGbp: costGbp,
             qty: 0,
             orders: []
           };
@@ -1343,15 +1414,17 @@ function renderPending() {
         agg[key].qty += (item.qty || 1);
         agg[key].orders.push({ orderId: o.id, buyerName: buyer?.name || '未知', qty: item.qty || 1 });
         totalPendingQty += (item.qty || 1);
-        totalPendingGbp += (item.gbp || 0) * (item.qty || 1);
+        totalPendingGbp += costGbp * (item.qty || 1);
       });
     } else {
+      const costGbp = (o.costGbp !== undefined && o.costGbp !== null && o.costGbp > 0) ? o.costGbp : (o.gbp || 0);
       const key = `${o.productId || o.product}__${o.variant || ''}`;
       if (!agg[key]) {
         agg[key] = {
           name: o.product || '',
           variant: o.variant || '',
           gbp: o.gbp || 0,
+          costGbp: costGbp,
           qty: 0,
           orders: []
         };
@@ -1359,7 +1432,7 @@ function renderPending() {
       agg[key].qty += (o.qty || 1);
       agg[key].orders.push({ orderId: o.id, buyerName: buyer?.name || '未知', qty: o.qty || 1 });
       totalPendingQty += (o.qty || 1);
-      totalPendingGbp += (o.gbp || 0) * (o.qty || 1);
+      totalPendingGbp += costGbp * (o.qty || 1);
     }
   });
 
@@ -1377,7 +1450,9 @@ function renderPending() {
     return;
   }
 
-  list.innerHTML = items.map(item => `
+  list.innerHTML = items.map(item => {
+    const hasDiffCost = Math.abs(item.costGbp - item.gbp) > 0.001;
+    return `
     <div class="product-card">
       <div class="product-card-left">
         <div class="product-name">
@@ -1385,8 +1460,8 @@ function renderPending() {
           ${item.variant ? `<span class="product-variant">${escapeHtml(item.variant)}</span>` : ''}
         </div>
         <div class="product-price-row">
-          <span class="product-gbp">£${(item.gbp * item.qty).toFixed(2)}</span>
-          <span class="product-meta">（£${item.gbp} × ${item.qty}）</span>
+          <span class="product-gbp">£${(item.costGbp * item.qty).toFixed(2)}</span>
+          <span class="product-meta">（${hasDiffCost ? `成本 £${item.costGbp} · 標價 £${item.gbp}` : `£${item.gbp}`} × ${item.qty}）</span>
         </div>
         <div class="product-meta" style="margin-top:6px">
           買家：${item.orders.map(x => `${escapeHtml(x.buyerName)} (${x.qty})`).join('、')}
@@ -1415,11 +1490,17 @@ window.markItemOrdersOrdered = markItemOrdersOrdered;
 // Modals & UI Helpers
 function openModal(id) {
   const m = document.getElementById(id);
-  if (m) m.classList.add('active');
+  if (m) {
+    m.classList.add('active');
+    m.classList.add('open');
+  }
 }
 function closeModal(id) {
   const m = document.getElementById(id);
-  if (m) m.classList.remove('active');
+  if (m) {
+    m.classList.remove('active');
+    m.classList.remove('open');
+  }
 }
 window.openModal = openModal;
 window.closeModal = closeModal;
