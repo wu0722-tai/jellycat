@@ -1472,7 +1472,8 @@ function renderPending() {
         <button class="link-btn" style="font-size:11px" onclick="markItemOrdersOrdered('${item.orders.map(o=>o.orderId).join(',')}')">全部標記為已下單</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function markItemOrdersOrdered(orderIdsStr) {
