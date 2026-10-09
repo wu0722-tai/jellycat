@@ -103,80 +103,169 @@ function showDemoMode() {
   loadLocalData(); showApp();
 }
 
-// Data: Firestore
-function getUserPath(col) { return collection(db, 'users', currentUser.uid, col); }
+// Data: Firestore & Local Storage
+function isCloudMode() {
+  return db && currentUser && currentUser.uid && currentUser.uid !== 'demo';
+}
+
+function getUserPath(col) {
+  return collection(db, 'users', currentUser.uid, col);
+}
 
 async function loadData() {
+  if (!isCloudMode()) {
+    loadLocalData();
+    return;
+  }
   try {
     const snap = await getDocs(collection(db, 'users', currentUser.uid, 'settings'));
     snap.forEach(d => { if (d.id === 'main') Object.assign(settings, d.data()); });
-  } catch {}
+  } catch (err) {
+    console.warn('Load cloud settings error:', err);
+  }
   if (settings.rate && !settings.quoteRate) settings.quoteRate = settings.rate;
   if (!settings.quoteRate) settings.quoteRate = 50;
   if (!settings.costRate) settings.costRate = 41.5;
   updateRateDisplay();
-  unsubscribers.push(onSnapshot(query(getUserPath('buyers'), orderBy('name')), snap => {
-    buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderBuyers(); renderDashboard();
-  }));
-  unsubscribers.push(onSnapshot(query(getUserPath('orders'), orderBy('createdAt', 'desc')), snap => {
-    orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderOrders(); renderDashboard(); renderPending();
-  }));
-  unsubscribers.push(onSnapshot(query(getUserPath('products'), orderBy('name')), snap => {
-    products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderProducts(); renderProductPicker();
-  }));
+
+  try {
+    unsubscribers.push(onSnapshot(query(getUserPath('buyers'), orderBy('name')), snap => {
+      buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderBuyers(); renderDashboard();
+    }, err => {
+      console.warn('Buyers cloud sync error, using local:', err);
+      loadLocalData();
+    }));
+
+    unsubscribers.push(onSnapshot(query(getUserPath('orders'), orderBy('createdAt', 'desc')), snap => {
+      orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderOrders(); renderDashboard(); renderPending();
+    }, err => {
+      console.warn('Orders cloud sync error, using local:', err);
+    }));
+
+    unsubscribers.push(onSnapshot(query(getUserPath('products'), orderBy('name')), snap => {
+      products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderProducts(); renderProductPicker();
+    }, err => {
+      console.warn('Products cloud sync error, using local:', err);
+    }));
+  } catch (e) {
+    console.warn('Firestore snapshot setup failed, falling back to local data:', e);
+    loadLocalData();
+  }
 }
 
 async function saveBuyer(data) {
   const id = data.id || Date.now().toString();
-  if (db) { await setDoc(doc(db, 'users', currentUser.uid, 'buyers', id), { ...data, id }); }
-  else {
-    const idx = buyers.findIndex(b => b.id === id);
-    if (idx >= 0) buyers[idx] = { ...data, id }; else buyers.push({ ...data, id });
-    saveLocalData(); renderBuyers(); renderDashboard();
+  if (isCloudMode()) {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'buyers', id), { ...data, id });
+      return id;
+    } catch (err) {
+      console.warn('Cloud saveBuyer failed, saving locally:', err);
+    }
   }
+  const idx = buyers.findIndex(b => b.id === id);
+  if (idx >= 0) buyers[idx] = { ...data, id }; else buyers.push({ ...data, id });
+  saveLocalData();
+  renderBuyers();
+  renderDashboard();
   return id;
 }
+
 async function deleteBuyer(id) {
-  if (db) await deleteDoc(doc(db, 'users', currentUser.uid, 'buyers', id));
-  else { buyers = buyers.filter(b => b.id !== id); saveLocalData(); renderBuyers(); renderDashboard(); }
+  if (isCloudMode()) {
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'buyers', id));
+      return;
+    } catch (err) {
+      console.warn('Cloud deleteBuyer failed, deleting locally:', err);
+    }
+  }
+  buyers = buyers.filter(b => b.id !== id);
+  saveLocalData();
+  renderBuyers();
+  renderDashboard();
 }
 
 async function saveOrder(data) {
   const id = data.id || Date.now().toString();
   if (!data.createdAt) data.createdAt = Date.now();
-  if (db) { await setDoc(doc(db, 'users', currentUser.uid, 'orders', id), { ...data, id }); }
-  else {
-    const idx = orders.findIndex(o => o.id === id);
-    if (idx >= 0) orders[idx] = { ...data, id }; else orders.unshift({ ...data, id });
-    saveLocalData(); renderOrders(); renderDashboard(); renderPending();
+  if (isCloudMode()) {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'orders', id), { ...data, id });
+      return;
+    } catch (err) {
+      console.warn('Cloud saveOrder failed, saving locally:', err);
+    }
   }
+  const idx = orders.findIndex(o => o.id === id);
+  if (idx >= 0) orders[idx] = { ...data, id }; else orders.unshift({ ...data, id });
+  saveLocalData();
+  renderOrders();
+  renderDashboard();
+  renderPending();
 }
+
 async function deleteOrder(id) {
-  if (db) await deleteDoc(doc(db, 'users', currentUser.uid, 'orders', id));
-  else { orders = orders.filter(o => o.id !== id); saveLocalData(); renderOrders(); renderDashboard(); renderPending(); }
+  if (isCloudMode()) {
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'orders', id));
+      return;
+    } catch (err) {
+      console.warn('Cloud deleteOrder failed, deleting locally:', err);
+    }
+  }
+  orders = orders.filter(o => o.id !== id);
+  saveLocalData();
+  renderOrders();
+  renderDashboard();
+  renderPending();
 }
 
 async function saveProduct(data) {
   const id = data.id || Date.now().toString();
   if (!data.createdAt) data.createdAt = Date.now();
-  if (db) { await setDoc(doc(db, 'users', currentUser.uid, 'products', id), { ...data, id }); }
-  else {
-    const idx = products.findIndex(p => p.id === id);
-    if (idx >= 0) products[idx] = { ...data, id }; else products.push({ ...data, id });
-    saveLocalData(); renderProducts(); renderProductPicker();
+  if (isCloudMode()) {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'products', id), { ...data, id });
+      return;
+    } catch (err) {
+      console.warn('Cloud saveProduct failed, saving locally:', err);
+    }
   }
+  const idx = products.findIndex(p => p.id === id);
+  if (idx >= 0) products[idx] = { ...data, id }; else products.push({ ...data, id });
+  saveLocalData();
+  renderProducts();
+  renderProductPicker();
 }
+
 async function deleteProduct(id) {
-  if (db) await deleteDoc(doc(db, 'users', currentUser.uid, 'products', id));
-  else { products = products.filter(p => p.id !== id); saveLocalData(); renderProducts(); }
+  if (isCloudMode()) {
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'products', id));
+      return;
+    } catch (err) {
+      console.warn('Cloud deleteProduct failed, deleting locally:', err);
+    }
+  }
+  products = products.filter(p => p.id !== id);
+  saveLocalData();
+  renderProducts();
+  renderProductPicker();
 }
 
 async function saveSettings() {
-  if (db) await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'main'), settings);
-  else saveLocalData();
+  if (isCloudMode()) {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'main'), settings);
+    } catch (err) {
+      console.warn('Cloud saveSettings failed:', err);
+    }
+  }
+  saveLocalData();
 }
 
 function loadLocalData() {
