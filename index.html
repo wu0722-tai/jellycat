@@ -162,7 +162,10 @@
       <div class="tab-page" id="page-orders">
         <div class="page-header">
           <h2 class="page-title">訂單列表</h2>
-          <button class="add-btn" id="add-order-btn">＋ 新增代購單</button>
+          <div style="display:flex;gap:8px">
+            <button class="secondary-btn" id="import-csv-btn" style="padding:8px 14px;border-radius:50px;background:var(--bg3);border:1px solid var(--card-border);color:var(--text);font-size:13px;font-weight:800;cursor:pointer">📥 匯入 CSV</button>
+            <button class="add-btn" id="add-order-btn">＋ 新增代購單</button>
+          </div>
         </div>
         <div class="filter-bar">
           <button class="filter-chip active" data-filter="all">全部</button>
@@ -493,7 +496,41 @@
     </div>
   </div>
 
+  <!-- CSV Import Modal -->
+  <div class="modal-overlay" id="csv-modal">
+    <div class="modal-sheet modal-sheet-tall">
+      <div class="modal-header">
+        <h3>📥 匯入代購 CSV 資料</h3>
+        <button class="modal-close" data-modal="csv-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:linear-gradient(135deg,rgba(124,58,237,0.18),rgba(236,72,153,0.12));border:1px solid rgba(124,58,237,0.4);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px">
+          <div style="font-weight:800;font-size:15px;color:var(--text);margin-bottom:4px">📁 已為您統整《英國代購 - 工作表1.csv》</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">共 26 筆訂單、24 位買家、15 種代購商品，總額 NT$134,505</div>
+          <button type="button" class="primary-btn full-btn" id="quick-import-builtin-csv-btn">⚡ 一鍵直接匯入此 CSV（26 筆訂單）</button>
+        </div>
+
+        <div class="form-section-label">或 上傳其他代購 CSV 檔案</div>
+        <div style="border:2px dashed rgba(255,255,255,0.15);border-radius:var(--radius-sm);padding:20px;text-align:center;cursor:pointer;background:var(--bg3);transition:all var(--transition)" id="csv-drop-zone">
+          <div style="font-size:30px;margin-bottom:6px">📄</div>
+          <div style="font-size:14px;font-weight:800">點此選取 CSV 檔案</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px">支援 Google 試算表或 Excel 匯出的代購表格</div>
+          <input type="file" id="csv-file-input" accept=".csv" style="display:none" />
+        </div>
+
+        <div id="csv-preview-container" style="display:none;margin-top:16px">
+          <div class="form-section-label">📋 資料預覽與統計</div>
+          <div id="csv-stats-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px"></div>
+          <div id="csv-preview-list" style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
+          <div class="modal-actions" style="margin-top:14px">
+            <button class="primary-btn full-btn" id="confirm-import-csv-btn">確認匯入資料</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
-  <script type="module" src="app.js?v=20261009_2"></script>
+  <script type="module" src="app.js?v=20261009_3"></script>
 </body>
 </html>

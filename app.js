@@ -1585,3 +1585,363 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
 }
 window.showToast = showToast;
+
+// =============================================
+// CSV Import Engine (英國代購 CSV 統整與匯入)
+// =============================================
+const BUILTIN_CSV_DATA = `賴名稱,姓名,電話,門市,訂購商品,訂金,商品價格,運費,成本,獲利,,
+亘,陳奕亘,910498594,淡水金滬,波斯貓（白）*1,1000✅(96821),2000,,暫時取消,,,
+ShellyChen,陳俐瑄,989764398,板民門市,鮭魚兔*1,825✅(70224),1650,,1419,231,,退錢
+孟妤,陳孟妤,979266998,金沙門市,綠*1藍*1,825✅(27752),3000,,1419,1581,,沒買到鮭魚要減825
+陳希紜,,,,鮭魚兔*5藍*5綠*5波斯貓*5,8250✅(52686),33250,,7095,1155,,沒買到鮭魚要減1650
+姵羽,諶姵羽,919311766,面交,鮭魚兔*2,1650✅(48583),3300,,2838,462,,
+楊琇聿,楊琇聿,911280503,臨通門市,鮭魚兔*1,0,2000✅（68968）,60✅,1419,581,,
+貢茶,蔡佳恩,989208030,新國門市,鮭魚兔*1,0,1650✅(04586),,1419,231,,退錢
+勞倫斯,,,,大烏龜,,1914,,1720,194,,
+湘,,,,碎耳兔吊飾,,1141,,1075,66,,
+淋浴間,,,,蛋糕兔、可頌吊飾,,,,1720,-1720,,
+甜點店,,,,可頌吊飾,,,,,0,,
+雨咩咩,游芷亭,909873177,中棲門市,鮭魚兔*1,1000✅(16910),2000,,1419,581,,
+蕎,張瑞原,938660554,勤學門市,鮭魚兔*1三色兔各1,0,6500✅(44023),,1419,581,,
+XIAN,,,,狗*1,,1800,,1300,500,,
+孫,,,,小兔子,,,,989,-989,,
+徐莉緹,徐珮晴,910492088,鹿港福鹿店,鮭魚兔*3石頭人*1三色兔各2,12000✅(61099）,17600,,4257,13343,,
+雅貽,張雅貽,976164522,大約門市,鮭魚兔*1、藍兔子*1,2125✅ (55176）,4250,,3397,853,,
+倫敦面交仔,,,,鮭魚兔*1,,1900✅,,1419,481,,
+Chian ,,,寄編,藍色兔*2,0,3000✅,,2150,850,,
+珊珊Teresa ,蕭珊珊,961300663,大東園門市,綠*1藍*1,0,3000,,,,,
+Rei,林語宸,934081298,國光（大里）,藍*2粉*1綠*2,0,7500,,,,,
+孜孜,賴盈孜,928989984,維樂,粉*1藍*1,1500,3000,,,,,
+Subway,一中街,,送店,藍*3綠*3粉*3天空龍吊飾*5拿鐵碎花吊飾*2,13500,22850,,,,,
+Bonjour K,高麗玲,911830619,新真理,藍*1綠1,1500,3000,,,,,
+Mandy,吳柏萱,963266233,向心,藍*1,750,1500,,,,,
+金重佳蓉,鍾佳蓉,937332658,鳳新門市,三色兔各1波斯貓*1,6500,6500,,,,,`;
+
+let pendingImportData = null;
+
+const importCsvBtn = document.getElementById('import-csv-btn');
+if (importCsvBtn) {
+  importCsvBtn.addEventListener('click', () => {
+    openModal('csv-modal');
+  });
+}
+
+const quickImportBuiltinBtn = document.getElementById('quick-import-builtin-csv-btn');
+if (quickImportBuiltinBtn) {
+  quickImportBuiltinBtn.addEventListener('click', () => {
+    const parsed = parseCsvData(BUILTIN_CSV_DATA);
+    displayCsvPreview(parsed, '《英國代購 - 工作表1.csv》');
+  });
+}
+
+const csvDropZone = document.getElementById('csv-drop-zone');
+const csvFileInput = document.getElementById('csv-file-input');
+if (csvDropZone && csvFileInput) {
+  csvDropZone.addEventListener('click', () => csvFileInput.click());
+  csvDropZone.addEventListener('dragover', e => { e.preventDefault(); csvDropZone.style.borderColor = 'var(--purple)'; });
+  csvDropZone.addEventListener('dragleave', () => { csvDropZone.style.borderColor = 'rgba(255,255,255,0.15)'; });
+  csvDropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    csvDropZone.style.borderColor = 'rgba(255,255,255,0.15)';
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleCsvFile(e.dataTransfer.files[0]);
+    }
+  });
+  csvFileInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files[0]) {
+      handleCsvFile(e.target.files[0]);
+    }
+  });
+}
+
+function handleCsvFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const content = e.target.result;
+    const parsed = parseCsvData(content);
+    displayCsvPreview(parsed, file.name);
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function parseCsvData(csvText) {
+  const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1) return { orders: [], buyers: [], products: [] };
+
+  const parsedBuyers = [];
+  const parsedOrders = [];
+  const parsedProducts = [];
+
+  for (let idx = 1; idx < lines.length; idx++) {
+    const row = splitCsvLine(lines[idx]);
+    if (!row || row.length < 5) continue;
+
+    const lineName = (row[0] || '').trim();
+    const realName = (row[1] || '').trim();
+    const buyerDisplayName = realName || lineName || `買家_${idx}`;
+    let phone = (row[2] || '').trim();
+    if (phone && phone.length === 9 && phone.startsWith('9')) {
+      phone = '0' + phone;
+    }
+    const store = (row[3] || '').trim();
+    const rawItems = (row[4] || '').trim();
+    const depositStr = (row[5] || '').trim();
+    const priceStr = (row[6] || '').trim();
+    const shipStr = (row[7] || '').trim();
+    const costNote = (row[8] || '').trim();
+    const extraNotes = [(row[9] || '').trim(), (row[10] || '').trim(), (row[11] || '').trim()].filter(Boolean).join(' · ');
+
+    // 1. Buyer
+    let buyer = parsedBuyers.find(b => (phone && b.phone === phone) || b.name === buyerDisplayName);
+    if (!buyer) {
+      buyer = {
+        id: 'buyer_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        name: buyerDisplayName,
+        phone: phone,
+        contact: lineName ? `@${lineName}` : phone,
+        address: store,
+        notes: (lineName && lineName !== realName) ? `LINE: ${lineName}` : '',
+        createdAt: Date.now()
+      };
+      parsedBuyers.push(buyer);
+    }
+
+    // 2. Items
+    const items = parseCsvItems(rawItems);
+    items.forEach(it => {
+      if (!parsedProducts.some(p => p.name === it.name && p.variant === it.variant)) {
+        parsedProducts.push({
+          id: 'prod_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          name: it.name,
+          variant: it.variant,
+          gbp: it.gbp || 30,
+          costGbp: it.costGbp || it.gbp || 30,
+          twd: it.twd || Math.round((it.gbp || 30) * (settings.quoteRate || 50)),
+          notes: '由 CSV 匯入自動建立',
+          createdAt: Date.now()
+        });
+      }
+    });
+
+    // 3. Price & Deposit & Payment
+    const depNumMatch = depositStr.match(/(\d+)/);
+    const deposit = depNumMatch ? parseInt(depNumMatch[1], 10) : 0;
+    const priceNumMatch = priceStr.match(/(\d+)/);
+    const totalPrice = priceNumMatch ? parseInt(priceNumMatch[1], 10) : items.reduce((s, i) => s + (i.twd || 0) * (i.qty || 1), 0);
+
+    let payment = 'unpaid';
+    if (priceStr.includes('✅') || (deposit >= totalPrice && totalPrice > 0)) {
+      payment = 'paid';
+    } else if (deposit > 0) {
+      payment = 'deposit';
+    }
+
+    // 4. Notes & Remittance info
+    const remMatch = depositStr.match(/[（(](\d+)[）)]/) || priceStr.match(/[（(](\d+)[）)]/);
+    const notesArr = [];
+    if (remMatch) notesArr.push(`末五碼 ${remMatch[1]}`);
+    if (shipStr) notesArr.push(`運費 ${shipStr}`);
+    if (costNote && costNote.includes('暫時取消')) notesArr.push('暫時取消');
+    if (extraNotes) notesArr.push(extraNotes);
+
+    parsedOrders.push({
+      id: 'order_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      buyerId: buyer.id,
+      buyerName: buyer.name,
+      buyerPhone: buyer.phone,
+      items: items,
+      totalPrice: totalPrice,
+      status: costNote.includes('暫時取消') ? 'cancelled' : 'pending',
+      payment: payment,
+      deposit: deposit,
+      notes: notesArr.join(' · '),
+      createdAt: Date.now()
+    });
+  }
+
+  return { buyers: parsedBuyers, orders: parsedOrders, products: parsedProducts };
+}
+
+function splitCsvLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function parseCsvItems(raw) {
+  if (!raw) return [{ name: '代購商品', variant: '', gbp: 30, costGbp: 30, twd: 1500, qty: 1 }];
+  const items = [];
+  const segments = raw.split(/[,，、;；]/).map(s => s.trim()).filter(Boolean);
+
+  segments.forEach(seg => {
+    const subMatches = seg.match(/([^\d*xX×各]+)(?:[*xX×各]\s*(\d+))?/g);
+    if (subMatches && subMatches.length > 0) {
+      subMatches.forEach(sm => {
+        let qty = 1;
+        const qm = sm.match(/[*xX×各]\s*(\d+)/);
+        if (qm) qty = parseInt(qm[1], 10) || 1;
+        let clean = sm.replace(/[*xX×各]\s*\d+/, '').trim();
+        if (clean) {
+          let variant = '';
+          const varMatch = clean.match(/[（(]([^）)]+)[）)]/);
+          if (varMatch) {
+            variant = varMatch[1].trim();
+            clean = clean.replace(/[（(][^）)]+[）)]/, '').trim();
+          }
+          if (clean === '綠') { clean = '邦尼兔'; variant = '綠色'; }
+          else if (clean === '藍') { clean = '邦尼兔'; variant = '藍色'; }
+          else if (clean === '粉') { clean = '邦尼兔'; variant = '粉色'; }
+          else if (clean === '狗') { clean = '小狗'; }
+
+          // Check if already in products library
+          const matchedP = products.find(p => p.name === clean && (!variant || p.variant === variant));
+          const quoteRate = settings.quoteRate || 50;
+          const gbp = matchedP ? matchedP.gbp : 30;
+          const costGbp = matchedP ? (matchedP.costGbp || matchedP.gbp) : 25;
+          const twd = matchedP ? matchedP.twd : Math.round(gbp * quoteRate);
+
+          items.push({
+            productId: matchedP ? matchedP.id : null,
+            name: clean,
+            variant: variant,
+            gbp: gbp,
+            costGbp: costGbp,
+            twd: twd,
+            qty: qty
+          });
+        }
+      });
+    } else {
+      items.push({ name: seg, variant: '', gbp: 30, costGbp: 25, twd: 1500, qty: 1 });
+    }
+  });
+
+  return items.length > 0 ? items : [{ name: raw, variant: '', gbp: 30, costGbp: 25, twd: 1500, qty: 1 }];
+}
+
+function displayCsvPreview(parsed, filename) {
+  pendingImportData = parsed;
+  const container = document.getElementById('csv-preview-container');
+  const statsSummary = document.getElementById('csv-stats-summary');
+  const previewList = document.getElementById('csv-preview-list');
+
+  if (!container || !parsed.orders.length) {
+    showToast('未能成功解析 CSV 資料，請確認檔案格式');
+    return;
+  }
+
+  container.style.display = 'block';
+
+  const totalRev = parsed.orders.reduce((s, o) => s + (o.totalPrice || 0), 0);
+  const totalDep = parsed.orders.reduce((s, o) => s + (o.deposit || 0), 0);
+
+  statsSummary.innerHTML = `
+    <div class="detail-stat-box"><span class="stat-num" style="color:var(--purple-light)">${parsed.orders.length}</span><span class="stat-lbl">解析訂單</span></div>
+    <div class="detail-stat-box"><span class="stat-num" style="color:var(--blue)">${parsed.buyers.length}</span><span class="stat-lbl">買家名單</span></div>
+    <div class="detail-stat-box"><span class="stat-num" style="color:var(--green)">NT$${totalRev.toLocaleString()}</span><span class="stat-lbl">訂單總額</span></div>
+  `;
+
+  previewList.innerHTML = parsed.orders.map((o, i) => {
+    const itemTags = o.items.map(it => `${escapeHtml(it.name)}${it.variant ? `(${escapeHtml(it.variant)})` : ''} ×${it.qty}`).join('、');
+    return `
+      <div style="background:var(--bg2);border:1px solid var(--card-border);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-weight:800;color:var(--text)">${i + 1}. 👤 ${escapeHtml(o.buyerName)} ${o.buyerPhone ? `<span style="color:var(--text-muted);font-weight:600">(${escapeHtml(o.buyerPhone)})</span>` : ''}</span>
+          <span class="badge ${o.payment}">${paymentLabel(o.payment)}</span>
+        </div>
+        <div style="color:var(--text-muted);margin-bottom:4px">🛍️ ${itemTags}</div>
+        <div style="display:flex;justify-content:space-between;color:var(--text-dim);font-size:11px">
+          <span>售價 NT$${o.totalPrice.toLocaleString()}${o.deposit > 0 ? ` (訂金 NT$${o.deposit.toLocaleString()})` : ''}</span>
+          <span>${o.notes ? `📝 ${escapeHtml(o.notes)}` : ''}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  showToast(`已成功解析 ${parsed.orders.length} 筆訂單，請確認後點擊「確認匯入」！`);
+}
+
+const confirmImportBtn = document.getElementById('confirm-import-csv-btn');
+if (confirmImportBtn) {
+  confirmImportBtn.addEventListener('click', async () => {
+    if (!pendingImportData || !pendingImportData.orders.length) return;
+
+    confirmImportBtn.disabled = true;
+    confirmImportBtn.textContent = '⏳ 正在匯入資料…';
+
+    try {
+      // 1. Save Products
+      for (const p of pendingImportData.products) {
+        if (!products.some(x => x.name === p.name && x.variant === p.variant)) {
+          await saveProduct(p);
+        }
+      }
+
+      // 2. Save Buyers
+      const buyerIdMap = {};
+      for (const b of pendingImportData.buyers) {
+        let existing = buyers.find(x => (b.phone && x.phone === b.phone) || x.name === b.name);
+        if (existing) {
+          buyerIdMap[b.id] = existing.id;
+        } else {
+          const newId = await saveBuyer(b);
+          buyerIdMap[b.id] = newId || b.id;
+        }
+      }
+
+      // 3. Save Orders
+      for (const o of pendingImportData.orders) {
+        const actualBuyerId = buyerIdMap[o.buyerId] || o.buyerId;
+        const mappedItems = o.items.map(it => {
+          const matchedP = products.find(p => p.name === it.name && p.variant === it.variant);
+          return {
+            productId: matchedP ? matchedP.id : null,
+            name: it.name,
+            variant: it.variant,
+            gbp: matchedP ? matchedP.gbp : (it.gbp || 30),
+            costGbp: matchedP ? (matchedP.costGbp || matchedP.gbp) : (it.costGbp || 25),
+            twd: it.twd || Math.round((it.gbp || 30) * (settings.quoteRate || 50)),
+            qty: it.qty || 1
+          };
+        });
+
+        const newOrder = {
+          id: o.id || Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5),
+          buyerId: actualBuyerId,
+          items: mappedItems,
+          status: o.status || 'pending',
+          payment: o.payment || 'unpaid',
+          deposit: o.deposit || 0,
+          notes: o.notes || '',
+          createdAt: Date.now()
+        };
+
+        await saveOrder(newOrder);
+      }
+
+      saveLocalData();
+      renderAll();
+      closeModal('csv-modal');
+      showToast(`🎉 成功匯入 ${pendingImportData.orders.length} 筆代購單與 ${pendingImportData.buyers.length} 位買家！`);
+    } catch (err) {
+      console.error('Import CSV error:', err);
+      showToast(`匯入時發生錯誤：${err.message}`);
+    } finally {
+      confirmImportBtn.disabled = false;
+      confirmImportBtn.textContent = '確認匯入資料';
+    }
+  });
+}
