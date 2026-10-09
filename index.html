@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Jellycat 代購對帳</title>
+  <meta name="description" content="Jellycat 代購對帳工具 — 管理訂單、買家、付款與利潤" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen active">
+    <div class="login-bg">
+      <div class="login-blob blob1"></div>
+      <div class="login-blob blob2"></div>
+      <div class="login-blob blob3"></div>
+    </div>
+    <div class="login-container">
+      <div class="login-logo">
+        <span class="logo-icon">🐰</span>
+        <h1 class="login-title">Jellycat 代購</h1>
+        <p class="login-subtitle">對帳管理系統</p>
+      </div>
+      <button id="google-login-btn" class="google-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        使用 Google 帳號登入
+      </button>
+      <p class="login-note">資料儲存於 Firebase，跨裝置同步</p>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app-screen" class="screen">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <span class="header-logo">🐰</span>
+        <span class="header-title">Jellycat 代購</span>
+      </div>
+      <div class="header-right">
+        <button id="settings-btn" class="icon-btn" title="設定">⚙️</button>
+        <button id="logout-btn" class="icon-btn" title="登出">🚪</button>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="dashboard" id="tab-dashboard">
+        <span class="tab-icon">📊</span>
+        <span class="tab-label">總覽</span>
+      </button>
+      <button class="tab-btn" data-tab="orders" id="tab-orders">
+        <span class="tab-icon">📦</span>
+        <span class="tab-label">訂單</span>
+      </button>
+      <button class="tab-btn" data-tab="buyers" id="tab-buyers">
+        <span class="tab-icon">👥</span>
+        <span class="tab-label">買家</span>
+      </button>
+      <button class="tab-btn" data-tab="pending" id="tab-pending">
+        <span class="tab-icon">🛒</span>
+        <span class="tab-label">待購</span>
+      </button>
+    </nav>
+
+    <!-- Page Content -->
+    <main class="page-content">
+      <!-- Dashboard Tab -->
+      <div class="tab-page active" id="page-dashboard">
+        <div class="page-header">
+          <h2 class="page-title">總覽</h2>
+          <span class="rate-badge" id="rate-display">💷 1 = NT$50</span>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="stat-grid">
+          <div class="stat-card purple">
+            <div class="stat-icon">💰</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-revenue">NT$0</div>
+              <div class="stat-label">總收入（售價合計）</div>
+            </div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-icon">📈</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-profit">NT$0</div>
+              <div class="stat-label">預估總利潤</div>
+            </div>
+          </div>
+          <div class="stat-card orange">
+            <div class="stat-icon">⏳</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-unpaid">NT$0</div>
+              <div class="stat-label">應收未收款</div>
+            </div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-icon">📦</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-orders">0</div>
+              <div class="stat-label">總訂單數</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Progress -->
+        <div class="section-card">
+          <h3 class="section-title">💳 付款進度</h3>
+          <div class="payment-bar-wrap">
+            <div class="payment-bar">
+              <div class="bar-segment paid" id="bar-paid" style="width:0%"></div>
+              <div class="bar-segment deposit" id="bar-deposit" style="width:0%"></div>
+              <div class="bar-segment unpaid" id="bar-unpaid" style="width:100%"></div>
+            </div>
+            <div class="bar-legend">
+              <span class="legend-dot paid"></span>全付 <span id="count-paid">0</span>
+              <span class="legend-dot deposit"></span>訂金 <span id="count-deposit">0</span>
+              <span class="legend-dot unpaid"></span>未付 <span id="count-unpaid">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Purchase Status -->
+        <div class="section-card">
+          <h3 class="section-title">🛍️ 商品購買狀態</h3>
+          <div class="status-chips">
+            <div class="status-chip" style="--color:#f97316">
+              <span class="chip-num" id="status-pending">0</span>
+              <span class="chip-label">待購</span>
+            </div>
+            <div class="status-chip" style="--color:#3b82f6">
+              <span class="chip-num" id="status-ordered">0</span>
+              <span class="chip-label">已下單</span>
+            </div>
+            <div class="status-chip" style="--color:#8b5cf6">
+              <span class="chip-num" id="status-arrived">0</span>
+              <span class="chip-label">已到貨</span>
+            </div>
+            <div class="status-chip" style="--color:#10b981">
+              <span class="chip-num" id="status-shipped">0</span>
+              <span class="chip-label">已出貨</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Orders -->
+        <div class="section-card">
+          <div class="section-title-row">
+            <h3 class="section-title">🕐 最近訂單</h3>
+            <button class="link-btn" onclick="switchTab('orders')">全部</button>
+          </div>
+          <div id="recent-orders-list" class="compact-list">
+            <div class="empty-hint">尚無訂單</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orders Tab -->
+      <div class="tab-page" id="page-orders">
+        <div class="page-header">
+          <h2 class="page-title">訂單列表</h2>
+          <button class="add-btn" id="add-order-btn">＋ 新增</button>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-bar">
+          <button class="filter-chip active" data-filter="all">全部</button>
+          <button class="filter-chip" data-filter="pending">待購</button>
+          <button class="filter-chip" data-filter="ordered">已下單</button>
+          <button class="filter-chip" data-filter="arrived">已到貨</button>
+          <button class="filter-chip" data-filter="shipped">已出貨</button>
+        </div>
+        <div class="search-wrap">
+          <input type="text" id="order-search" class="search-input" placeholder="🔍 搜尋買家或商品名稱…" />
+        </div>
+
+        <div id="orders-list" class="orders-list">
+          <div class="empty-state">
+            <div class="empty-icon">📦</div>
+            <p>還沒有訂單，點右上角新增！</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Buyers Tab -->
+      <div class="tab-page" id="page-buyers">
+        <div class="page-header">
+          <h2 class="page-title">買家管理</h2>
+          <button class="add-btn" id="add-buyer-btn">＋ 新增</button>
+        </div>
+        <div class="search-wrap">
+          <input type="text" id="buyer-search" class="search-input" placeholder="🔍 搜尋買家…" />
+        </div>
+        <div id="buyers-list" class="buyers-list">
+          <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <p>還沒有買家資料</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Tab -->
+      <div class="tab-page" id="page-pending">
+        <div class="page-header">
+          <h2 class="page-title">待購清單</h2>
+        </div>
+        <div class="section-card pending-summary">
+          <div class="pending-stat">
+            <span class="pending-num" id="pending-count">0</span>
+            <span class="pending-label">件待購商品</span>
+          </div>
+          <div class="pending-stat">
+            <span class="pending-num" id="pending-gbp">£0</span>
+            <span class="pending-label">預估英鎊總計</span>
+          </div>
+        </div>
+        <div id="pending-list" class="orders-list">
+          <div class="empty-state">
+            <div class="empty-icon">🎉</div>
+            <p>所有商品都已購買！</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============ MODALS ============ -->
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3>⚙️ 系統設定</h3>
+        <button class="modal-close" data-modal="settings-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">💷 匯率設定（1英鎊 = ?台幣）</label>
+          <div class="rate-input-row">
+            <input type="number" id="rate-input" class="form-input" value="50" min="1" step="0.5" />
+            <button class="fetch-rate-btn" id="fetch-rate-btn">抓即時匯率</button>
+          </div>
+          <p class="form-hint" id="rate-hint">目前設定：1 GBP = NT$50</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">🏷️ 預設訂金比例</label>
+          <div class="input-suffix-wrap">
+            <input type="number" id="deposit-ratio-input" class="form-input" value="30" min="0" max="100" />
+            <span class="input-suffix">%</span>
+          </div>
+        </div>
+        <button class="primary-btn full-btn" id="save-settings-btn">儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Order Modal -->
+  <div class="modal-overlay" id="order-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 id="order-modal-title">📦 新增訂單</h3>
+        <button class="modal-close" data-modal="order-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">買家 <span class="required">*</span></label>
+          <select id="order-buyer" class="form-input form-select">
+            <option value="">-- 選擇買家 --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品名稱 <span class="required">*</span></label>
+          <input type="text" id="order-product" class="form-input" placeholder="e.g. Bashful Beige Bunny Medium" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品尺寸 / 款式</label>
+          <input type="text" id="order-variant" class="form-input" placeholder="e.g. Medium / 粉色" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">英鎊標價 (£) <span class="required">*</span></label>
+          <input type="number" id="order-gbp" class="form-input" placeholder="e.g. 25" min="0" step="0.01" />
+          <p class="form-hint" id="order-cost-hint">成本：NT$0（依目前匯率）</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">售價（台幣）<span class="required">*</span></label>
+          <input type="number" id="order-twd" class="form-input" placeholder="e.g. 1600" min="0" />
+          <p class="form-hint" id="order-profit-hint">利潤：NT$0</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">數量</label>
+          <input type="number" id="order-qty" class="form-input" value="1" min="1" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">購買狀態</label>
+          <select id="order-status" class="form-input form-select">
+            <option value="pending">🟠 待購</option>
+            <option value="ordered">🔵 已下單</option>
+            <option value="arrived">🟣 已到貨</option>
+            <option value="shipped">🟢 已出貨</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">付款狀態</label>
+          <select id="order-payment" class="form-input form-select">
+            <option value="unpaid">❌ 未付款</option>
+            <option value="deposit">💛 已付訂金</option>
+            <option value="paid">✅ 已全額付清</option>
+          </select>
+        </div>
+        <div class="form-group" id="deposit-amount-group">
+          <label class="form-label">訂金金額（台幣）</label>
+          <input type="number" id="order-deposit" class="form-input" placeholder="e.g. 500" min="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">備註</label>
+          <textarea id="order-notes" class="form-input form-textarea" placeholder="任何備註…" rows="2"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="danger-btn" id="delete-order-btn" style="display:none">刪除</button>
+          <button class="primary-btn" id="save-order-btn">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Buyer Modal -->
+  <div class="modal-overlay" id="buyer-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 id="buyer-modal-title">👤 新增買家</h3>
+        <button class="modal-close" data-modal="buyer-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">買家名稱 <span class="required">*</span></label>
+          <input type="text" id="buyer-name" class="form-input" placeholder="e.g. 小美" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">LINE / IG / 聯絡方式</label>
+          <input type="text" id="buyer-contact" class="form-input" placeholder="e.g. @mei_jellycat" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">電話</label>
+          <input type="tel" id="buyer-phone" class="form-input" placeholder="e.g. 0912345678" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">收貨地址</label>
+          <input type="text" id="buyer-address" class="form-input" placeholder="e.g. 台北市..." />
+        </div>
+        <div class="form-group">
+          <label class="form-label">備註</label>
+          <textarea id="buyer-notes" class="form-input form-textarea" rows="2" placeholder="任何備註…"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="danger-btn" id="delete-buyer-btn" style="display:none">刪除</button>
+          <button class="primary-btn" id="save-buyer-btn">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buyer Detail Modal -->
+  <div class="modal-overlay" id="buyer-detail-modal">
+    <div class="modal-sheet modal-sheet-tall">
+      <div class="modal-header">
+        <h3 id="buyer-detail-name">買家詳情</h3>
+        <button class="modal-close" data-modal="buyer-detail-modal">✕</button>
+      </div>
+      <div class="modal-body" id="buyer-detail-body">
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <!-- Firebase SDKs -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
