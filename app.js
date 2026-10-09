@@ -63,28 +63,57 @@ try {
 
 // Auth
 const loginBtn = document.getElementById('google-login-btn');
-loginBtn.addEventListener('click', async () => {
-  if (location.protocol === 'file:') {
-    showToast('💡 提示：本機檔案模式直接進入，部署到網站後即可使用 Google 雲端同步');
+const demoBtn = document.getElementById('demo-login-btn');
+
+if (demoBtn) {
+  demoBtn.addEventListener('click', () => {
+    showToast('以本機/離線模式進入系統 📱');
     showDemoMode();
-    return;
-  }
-  if (!auth) {
-    showDemoMode();
-    return;
-  }
-  loginBtn.disabled = true;
-  try {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  } catch (e) {
-    console.error('Login error:', e);
-    showToast(`登入失敗（${e.message || '請確認 Firebase 已啟用 Google 登入'}），為您切換至離線模式`);
-    showDemoMode();
-  } finally {
-    loginBtn.disabled = false;
-  }
-});
+  });
+}
+
+if (loginBtn) {
+  loginBtn.addEventListener('click', async () => {
+    if (location.protocol === 'file:') {
+      showToast('💡 提示：本機檔案模式直接進入，部署到網站後即可使用 Google 雲端同步');
+      showDemoMode();
+      return;
+    }
+    if (!auth) {
+      showToast('⚠️ Firebase 服務未就緒，為您切換至本機模式');
+      showDemoMode();
+      return;
+    }
+    const origHtml = loginBtn.innerHTML;
+    loginBtn.disabled = true;
+    loginBtn.style.opacity = '0.7';
+    loginBtn.innerHTML = '<span>⏳ 正在開啟 Google 登入視窗…</span>';
+
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+      showToast('🎉 Google 登入成功！');
+    } catch (e) {
+      console.error('Login error:', e);
+      if (e.code === 'auth/popup-closed-by-user') {
+        showToast('已取消登入');
+      } else if (e.code === 'auth/popup-blocked') {
+        showToast('⚠️ 瀏覽器攔截了彈出視窗，請允許彈出視窗後重試');
+      } else if (e.code === 'auth/unauthorized-domain') {
+        showToast('⚠️ 網域尚未在 Firebase 授權，已自動為您切換至離線模式進入');
+        showDemoMode();
+      } else {
+        showToast(`登入失敗（${e.message || '請確認 Firebase 已啟用 Google 登入'}），為您切換至離線模式`);
+        showDemoMode();
+      }
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.style.opacity = '1';
+      loginBtn.innerHTML = origHtml;
+    }
+  });
+}
 
 document.getElementById('logout-btn').addEventListener('click', async () => {
   if (confirm('確定要登出嗎？')) { if (auth) await signOut(auth); else showLogin(); }

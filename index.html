@@ -32,7 +32,10 @@
         </svg>
         使用 Google 帳號登入
       </button>
-      <p class="login-note">資料儲存於 Firebase，跨裝置同步</p>
+      <button type="button" id="demo-login-btn" class="google-btn" style="margin-top:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);color:var(--text);font-size:13px;font-weight:700">
+        ⚡ 直接進入系統（離線/本機模式）
+      </button>
+      <p class="login-note">登入後資料可儲存於 Firebase 跨裝置同步；離線模式保存在本機</p>
     </div>
   </div>
 
@@ -491,6 +494,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=20261009_2"></script>
 </body>
 </html>
