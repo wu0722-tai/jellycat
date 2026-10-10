@@ -122,6 +122,16 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
 function showApp() {
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('app-screen').classList.add('active');
+  const badge = document.getElementById('user-info-badge');
+  if (badge) {
+    if (currentUser && currentUser.email) {
+      badge.textContent = `☁️ ${currentUser.email}`;
+    } else if (currentUser && currentUser.displayName) {
+      badge.textContent = `☁️ ${currentUser.displayName}`;
+    } else {
+      badge.textContent = '';
+    }
+  }
 }
 function showLogin() {
   document.getElementById('login-screen').classList.add('active');
@@ -137,8 +147,28 @@ function isCloudMode() {
   return db && currentUser && currentUser.uid && currentUser.uid !== 'demo';
 }
 
-function getUserPath(col) {
-  return collection(db, 'users', currentUser.uid, col);
+function getCloudCol(colName) {
+  return collection(db, 'shared_store', colName);
+}
+
+function getCloudDoc(colName, docId) {
+  return doc(db, 'shared_store', colName, docId);
+}
+
+async function syncLocalToCloudIfEmpty() {
+  if (!isCloudMode()) return;
+  try {
+    const ordersSnap = await getDocs(getCloudCol('orders'));
+    if (ordersSnap.empty && (orders.length > 0 || buyers.length > 0 || products.length > 0)) {
+      showToast('☁️ 正在將本機對帳資料同步至共享雲端…');
+      for (const b of buyers) await setDoc(getCloudDoc('buyers', b.id), b);
+      for (const o of orders) await setDoc(getCloudDoc('orders', o.id), o);
+      for (const p of products) await setDoc(getCloudDoc('products', p.id), p);
+      await setDoc(getCloudDoc('settings', 'main'), settings);
+    }
+  } catch (err) {
+    console.warn('Sync local to cloud check error:', err);
+  }
 }
 
 async function loadData() {
@@ -147,7 +177,7 @@ async function loadData() {
   if (!isCloudMode()) return;
 
   try {
-    const snap = await getDocs(collection(db, 'users', currentUser.uid, 'settings'));
+    const snap = await getDocs(getCloudCol('settings'));
     snap.forEach(d => { if (d.id === 'main') Object.assign(settings, d.data()); });
   } catch (err) {
     console.warn('Load cloud settings error:', err);
@@ -157,8 +187,10 @@ async function loadData() {
   if (!settings.costRate) settings.costRate = 41.5;
   updateRateDisplay();
 
+  await syncLocalToCloudIfEmpty();
+
   try {
-    unsubscribers.push(onSnapshot(getUserPath('buyers'), snap => {
+    unsubscribers.push(onSnapshot(getCloudCol('buyers'), snap => {
       if (!snap.empty) {
         buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         saveLocalData();
@@ -168,7 +200,7 @@ async function loadData() {
       console.warn('Buyers cloud sync error:', err.message);
     }));
 
-    unsubscribers.push(onSnapshot(getUserPath('orders'), snap => {
+    unsubscribers.push(onSnapshot(getCloudCol('orders'), snap => {
       if (!snap.empty) {
         orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         saveLocalData();
@@ -178,7 +210,7 @@ async function loadData() {
       console.warn('Orders cloud sync error:', err.message);
     }));
 
-    unsubscribers.push(onSnapshot(getUserPath('products'), snap => {
+    unsubscribers.push(onSnapshot(getCloudCol('products'), snap => {
       if (!snap.empty) {
         products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         saveLocalData();
@@ -202,7 +234,7 @@ async function saveBuyer(data) {
 
   if (isCloudMode()) {
     try {
-      await setDoc(doc(db, 'users', currentUser.uid, 'buyers', id), { ...data, id });
+      await setDoc(getCloudDoc('buyers', id), { ...data, id });
     } catch (err) {
       console.error('Cloud saveBuyer error:', err);
       handleCloudError(err);
@@ -219,7 +251,7 @@ async function deleteBuyer(id) {
 
   if (isCloudMode()) {
     try {
-      await deleteDoc(doc(db, 'users', currentUser.uid, 'buyers', id));
+      await deleteDoc(getCloudDoc('buyers', id));
     } catch (err) {
       console.error('Cloud deleteBuyer error:', err);
       handleCloudError(err);
@@ -239,7 +271,7 @@ async function saveOrder(data) {
 
   if (isCloudMode()) {
     try {
-      await setDoc(doc(db, 'users', currentUser.uid, 'orders', id), { ...data, id });
+      await setDoc(getCloudDoc('orders', id), { ...data, id });
     } catch (err) {
       console.error('Cloud saveOrder error:', err);
       handleCloudError(err);
@@ -256,7 +288,7 @@ async function deleteOrder(id) {
 
   if (isCloudMode()) {
     try {
-      await deleteDoc(doc(db, 'users', currentUser.uid, 'orders', id));
+      await deleteDoc(getCloudDoc('orders', id));
     } catch (err) {
       console.error('Cloud deleteOrder error:', err);
       handleCloudError(err);
@@ -275,7 +307,7 @@ async function saveProduct(data) {
 
   if (isCloudMode()) {
     try {
-      await setDoc(doc(db, 'users', currentUser.uid, 'products', id), { ...data, id });
+      await setDoc(getCloudDoc('products', id), { ...data, id });
     } catch (err) {
       console.error('Cloud saveProduct error:', err);
       handleCloudError(err);
@@ -291,7 +323,7 @@ async function deleteProduct(id) {
 
   if (isCloudMode()) {
     try {
-      await deleteDoc(doc(db, 'users', currentUser.uid, 'products', id));
+      await deleteDoc(getCloudDoc('products', id));
     } catch (err) {
       console.error('Cloud deleteProduct error:', err);
       handleCloudError(err);
@@ -303,7 +335,7 @@ async function saveSettings() {
   saveLocalData();
   if (isCloudMode()) {
     try {
-      await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'main'), settings);
+      await setDoc(getCloudDoc('settings', 'main'), settings);
     } catch (err) {
       console.error('Cloud saveSettings error:', err);
       handleCloudError(err);
