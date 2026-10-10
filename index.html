@@ -282,6 +282,27 @@
             <span class="input-suffix">%</span>
           </div>
         </div>
+
+        <div class="form-section-label" style="margin-top:16px;margin-bottom:8px">☁️ 資料庫同步與共享設定</div>
+        <div class="form-group">
+          <label class="form-label">選擇連線與同步的代購資料庫：</label>
+          <select id="store-mode-select" class="form-input form-select">
+            <option value="shared">🌐 全體公共共享庫（所有人同步同一份資料）</option>
+            <option value="personal">👤 我個人 Gmail 專屬庫（僅我自己可見）</option>
+            <option value="custom">🤝 指定團隊/夥伴空間 ID</option>
+          </select>
+        </div>
+        <div class="form-group" id="custom-store-group" style="display:none">
+          <label class="form-label">輸入團隊空間 ID / 夥伴代號：</label>
+          <input type="text" id="custom-store-id-input" class="form-input" placeholder="例如：team_jellycat_01" />
+          <p class="form-hint">所有填寫此相同代號的 Gmail 帳號都會即時同步該資料庫</p>
+        </div>
+        <div class="detail-card" style="background:rgba(59,130,246,0.12);border-color:rgba(59,130,246,0.3);margin-bottom:16px">
+          <div style="font-weight:800;font-size:13px;color:var(--text);margin-bottom:4px">📤 發布資料給全體共享庫</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">將您目前 Gmail 帳號 / 本機上的所有代購單與買家資料，發布覆蓋至「全體公共共享庫」讓大家同步使用。</div>
+          <button type="button" class="secondary-btn full-btn" id="publish-to-shared-btn" style="background:linear-gradient(135deg,var(--purple),#ec4899);color:#fff;border:none;font-weight:800;font-size:13px;padding:10px">⚡ 立即將我目前的資料發布共享給全體</button>
+        </div>
+
         <button class="primary-btn full-btn" id="save-settings-btn">儲存設定</button>
       </div>
     </div>

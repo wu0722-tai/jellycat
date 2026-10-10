@@ -122,16 +122,18 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
 function showApp() {
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('app-screen').classList.add('active');
+  updateUserBadge();
+}
+
+function updateUserBadge() {
   const badge = document.getElementById('user-info-badge');
-  if (badge) {
-    if (currentUser && currentUser.email) {
-      badge.textContent = `☁️ ${currentUser.email}`;
-    } else if (currentUser && currentUser.displayName) {
-      badge.textContent = `☁️ ${currentUser.displayName}`;
-    } else {
-      badge.textContent = '';
-    }
-  }
+  if (!badge) return;
+  const userText = (currentUser && (currentUser.email || currentUser.displayName)) || '離線模式';
+  let modeLabel = '🌐 公共共享庫';
+  if (currentStoreConfig.type === 'personal') modeLabel = '👤 個人庫';
+  else if (currentStoreConfig.type === 'custom') modeLabel = `🤝 團隊 [${currentStoreConfig.customId || '自訂'}]`;
+
+  badge.innerHTML = `<span style="background:rgba(255,255,255,0.1);padding:4px 10px;border-radius:14px;cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="openSettingsModal()">${modeLabel} · ${userText}</span>`;
 }
 function showLogin() {
   document.getElementById('login-screen').classList.add('active');
@@ -143,16 +145,33 @@ function showDemoMode() {
 }
 
 // Data: Firestore & Local Storage
+let currentStoreConfig = {
+  type: localStorage.getItem('jc_store_type') || 'shared',
+  customId: localStorage.getItem('jc_store_custom_id') || ''
+};
+
 function isCloudMode() {
   return db && currentUser && currentUser.uid && currentUser.uid !== 'demo';
 }
 
 function getCloudCol(colName) {
-  return collection(db, 'shared_store', colName);
+  if (currentStoreConfig.type === 'personal') {
+    return collection(db, 'users', currentUser.uid, colName);
+  } else if (currentStoreConfig.type === 'custom' && currentStoreConfig.customId) {
+    return collection(db, 'workspaces', currentStoreConfig.customId.trim(), colName);
+  } else {
+    return collection(db, 'shared_store', colName);
+  }
 }
 
 function getCloudDoc(colName, docId) {
-  return doc(db, 'shared_store', colName, docId);
+  if (currentStoreConfig.type === 'personal') {
+    return doc(db, 'users', currentUser.uid, colName, docId);
+  } else if (currentStoreConfig.type === 'custom' && currentStoreConfig.customId) {
+    return doc(db, 'workspaces', currentStoreConfig.customId.trim(), colName, docId);
+  } else {
+    return doc(db, 'shared_store', colName, docId);
+  }
 }
 
 async function syncLocalToCloudIfEmpty() {
@@ -160,7 +179,7 @@ async function syncLocalToCloudIfEmpty() {
   try {
     const ordersSnap = await getDocs(getCloudCol('orders'));
     if (ordersSnap.empty && (orders.length > 0 || buyers.length > 0 || products.length > 0)) {
-      showToast('☁️ 正在將本機對帳資料同步至共享雲端…');
+      showToast('☁️ 正在將本機對帳資料同步至選擇的雲端資料庫…');
       for (const b of buyers) await setDoc(getCloudDoc('buyers', b.id), b);
       for (const o of orders) await setDoc(getCloudDoc('orders', o.id), o);
       for (const p of products) await setDoc(getCloudDoc('products', p.id), p);
@@ -382,13 +401,70 @@ function switchTab(tab) {
 window.switchTab = switchTab;
 
 // Settings
-document.getElementById('settings-btn').addEventListener('click', () => {
+document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+
+function openSettingsModal() {
   document.getElementById('quote-rate-input').value = settings.quoteRate || 50;
   document.getElementById('cost-rate-input').value = settings.costRate || 41.5;
   document.getElementById('deposit-ratio-input').value = settings.depositRatio || 30;
+
+  const modeSelect = document.getElementById('store-mode-select');
+  if (modeSelect) modeSelect.value = currentStoreConfig.type || 'shared';
+
+  const customIdInput = document.getElementById('custom-store-id-input');
+  if (customIdInput) customIdInput.value = currentStoreConfig.customId || '';
+
+  toggleCustomStoreGroup();
   updateSettingsDiffHint();
   openModal('settings-modal');
-});
+}
+window.openSettingsModal = openSettingsModal;
+
+function toggleCustomStoreGroup() {
+  const modeSelect = document.getElementById('store-mode-select');
+  const group = document.getElementById('custom-store-group');
+  if (modeSelect && group) {
+    group.style.display = (modeSelect.value === 'custom') ? 'block' : 'none';
+  }
+}
+
+const storeModeSelect = document.getElementById('store-mode-select');
+if (storeModeSelect) {
+  storeModeSelect.addEventListener('change', toggleCustomStoreGroup);
+}
+
+const publishBtn = document.getElementById('publish-to-shared-btn');
+if (publishBtn) {
+  publishBtn.addEventListener('click', async () => {
+    if (!isCloudMode()) {
+      showToast('⚠️ 請先登入 Google 帳號才能發布至共享雲端庫');
+      return;
+    }
+    if (!confirm(`確定要將您目前的 ${orders.length} 筆訂單、${buyers.length} 位買家、${products.length} 項商品發布覆蓋至「全體公共共享庫」嗎？`)) {
+      return;
+    }
+    const origHtml = publishBtn.innerHTML;
+    publishBtn.disabled = true;
+    publishBtn.textContent = '⏳ 正在上傳與發布中…';
+
+    try {
+      const sharedDoc = (col, id) => doc(db, 'shared_store', col, id);
+
+      for (const b of buyers) await setDoc(sharedDoc('buyers', b.id), b);
+      for (const o of orders) await setDoc(sharedDoc('orders', o.id), o);
+      for (const p of products) await setDoc(sharedDoc('products', p.id), p);
+      await setDoc(sharedDoc('settings', 'main'), settings);
+
+      showToast('🎉 已成功將您 Gmail 的資料發布至全體公共共享庫！大家皆可即時同步！');
+    } catch (err) {
+      console.error('Publish error:', err);
+      showToast('發布失敗：' + (err.message || '請重試'));
+    } finally {
+      publishBtn.disabled = false;
+      publishBtn.innerHTML = origHtml;
+    }
+  });
+}
 
 function updateSettingsDiffHint() {
   const q = parseFloat(document.getElementById('quote-rate-input').value) || 50;
@@ -410,11 +486,34 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
   settings.quoteRate = parseFloat(document.getElementById('quote-rate-input').value) || 50;
   settings.costRate = parseFloat(document.getElementById('cost-rate-input').value) || 41.5;
   settings.depositRatio = parseInt(document.getElementById('deposit-ratio-input').value) || 30;
+
+  const modeSelect = document.getElementById('store-mode-select');
+  const customInput = document.getElementById('custom-store-id-input');
+
+  const newType = modeSelect ? modeSelect.value : 'shared';
+  const newCustomId = customInput ? customInput.value.trim() : '';
+
+  const modeChanged = (newType !== currentStoreConfig.type || newCustomId !== currentStoreConfig.customId);
+
+  currentStoreConfig.type = newType;
+  currentStoreConfig.customId = newCustomId;
+  localStorage.setItem('jc_store_type', newType);
+  localStorage.setItem('jc_store_custom_id', newCustomId);
+
   await saveSettings();
   updateRateDisplay();
-  renderAll();
+  updateUserBadge();
+
+  if (modeChanged && isCloudMode()) {
+    showToast('☁️ 正在為您連線切換至選擇的資料庫…');
+    cleanup();
+    await loadData();
+  } else {
+    renderAll();
+  }
+
   closeModal('settings-modal');
-  showToast('匯率設定已儲存 ✅');
+  showToast('設定已儲存 ✅');
 });
 
 document.getElementById('fetch-rate-btn').addEventListener('click', async () => {
