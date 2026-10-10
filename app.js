@@ -145,6 +145,8 @@ function showDemoMode() {
 }
 
 // Data: Firestore & Local Storage
+const DEFAULT_SHARED_UID = 'pfJ1BVkrXNUoJCvM5qFceyNwqS32';
+
 let currentStoreConfig = {
   type: localStorage.getItem('jc_store_type') || 'shared',
   customId: localStorage.getItem('jc_store_custom_id') || ''
@@ -160,7 +162,8 @@ function getCloudCol(colName) {
   } else if (currentStoreConfig.type === 'custom' && currentStoreConfig.customId) {
     return collection(db, 'workspaces', currentStoreConfig.customId.trim(), colName);
   } else {
-    return collection(db, 'shared_store', colName);
+    // 預設同步至指定帳號：pfJ1BVkrXNUoJCvM5qFceyNwqS32 的雲端資料庫
+    return collection(db, 'users', DEFAULT_SHARED_UID, colName);
   }
 }
 
@@ -170,7 +173,7 @@ function getCloudDoc(colName, docId) {
   } else if (currentStoreConfig.type === 'custom' && currentStoreConfig.customId) {
     return doc(db, 'workspaces', currentStoreConfig.customId.trim(), colName, docId);
   } else {
-    return doc(db, 'shared_store', colName, docId);
+    return doc(db, 'users', DEFAULT_SHARED_UID, colName, docId);
   }
 }
 
@@ -440,7 +443,7 @@ if (publishBtn) {
       showToast('⚠️ 請先登入 Google 帳號才能發布至共享雲端庫');
       return;
     }
-    if (!confirm(`確定要將您目前的 ${orders.length} 筆訂單、${buyers.length} 位買家、${products.length} 項商品發布覆蓋至「全體公共共享庫」嗎？`)) {
+    if (!confirm(`確定要將您目前的 ${orders.length} 筆訂單、${buyers.length} 位買家、${products.length} 項商品發布覆蓋至主共享帳號（pfJ1BVkrXNUoJCvM5qFceyNwqS32）的資料庫嗎？`)) {
       return;
     }
     const origHtml = publishBtn.innerHTML;
@@ -448,14 +451,14 @@ if (publishBtn) {
     publishBtn.textContent = '⏳ 正在上傳與發布中…';
 
     try {
-      const sharedDoc = (col, id) => doc(db, 'shared_store', col, id);
+      const sharedDoc = (col, id) => doc(db, 'users', DEFAULT_SHARED_UID, col, id);
 
       for (const b of buyers) await setDoc(sharedDoc('buyers', b.id), b);
       for (const o of orders) await setDoc(sharedDoc('orders', o.id), o);
       for (const p of products) await setDoc(sharedDoc('products', p.id), p);
       await setDoc(sharedDoc('settings', 'main'), settings);
 
-      showToast('🎉 已成功將您 Gmail 的資料發布至全體公共共享庫！大家皆可即時同步！');
+      showToast('🎉 已成功將您的資料發布至主共享帳號！大家登入後皆可即時同步此資料！');
     } catch (err) {
       console.error('Publish error:', err);
       showToast('發布失敗：' + (err.message || '請重試'));
