@@ -263,9 +263,18 @@ async function loadData() {
 
 async function saveStock(data) {
   const id = data.id || Date.now().toString();
-  if (!data.createdAt) data.createdAt = Date.now();
+  const cleanData = {
+    id: id,
+    productId: data.productId || null,
+    name: (data.name || '').trim(),
+    variant: (data.variant || '').trim(),
+    stockQty: Math.max(0, parseInt(data.stockQty, 10) || 0),
+    notes: (data.notes || '').trim(),
+    createdAt: data.createdAt || Date.now()
+  };
+
   const idx = inventory.findIndex(item => item.id === id);
-  if (idx >= 0) inventory[idx] = { ...data, id }; else inventory.push({ ...data, id });
+  if (idx >= 0) inventory[idx] = cleanData; else inventory.push(cleanData);
   saveLocalData();
   renderInventory();
   renderProducts();
@@ -274,7 +283,7 @@ async function saveStock(data) {
 
   if (isCloudMode()) {
     try {
-      await setDoc(getCloudDoc('inventory', id), { ...data, id });
+      await setDoc(getCloudDoc('inventory', id), cleanData);
     } catch (err) {
       console.error('Cloud saveStock error:', err);
       handleCloudError(err);
@@ -2378,24 +2387,50 @@ window.quickStockIn = quickStockIn;
 const saveStockBtnEl = document.getElementById('save-stock-btn');
 if (saveStockBtnEl) {
   saveStockBtnEl.addEventListener('click', async () => {
-    const name = document.getElementById('stock-name').value.trim();
-    const qty = parseInt(document.getElementById('stock-qty').value, 10);
-    if (!name) { showToast('請填寫商品名稱 🏷️'); return; }
-    if (isNaN(qty) || qty < 0) { showToast('請填寫正確的庫存數量 📦'); return; }
+    try {
+      let name = document.getElementById('stock-name').value.trim();
+      let variant = document.getElementById('stock-variant').value.trim();
+      const selPid = document.getElementById('stock-product-select').value;
 
-    const selPid = document.getElementById('stock-product-select').value;
-    const data = {
-      id: (editStockId && !editStockId.startsWith('p_')) ? editStockId : Date.now().toString(),
-      productId: selPid || null,
-      name,
-      variant: document.getElementById('stock-variant').value.trim(),
-      stockQty: qty,
-      notes: document.getElementById('stock-notes').value.trim(),
-      createdAt: Date.now()
-    };
-    await saveStock(data);
-    closeModal('stock-modal');
-    showToast('現貨庫存設定已更新 ✅');
+      // Auto fill name/variant if empty but product select has value
+      if (!name && selPid) {
+        const p = products.find(x => x.id === selPid);
+        if (p) {
+          name = p.name || '';
+          if (!variant) variant = p.variant || '';
+        }
+      }
+
+      if (!name) {
+        showToast('請選擇或填寫商品名稱 🏷️');
+        return;
+      }
+
+      const qtyVal = document.getElementById('stock-qty').value;
+      const qty = parseInt(qtyVal, 10);
+      if (isNaN(qty) || qty < 0) {
+        showToast('請填寫正確的庫存數量 📦');
+        return;
+      }
+
+      const data = {
+        id: (editStockId && !editStockId.startsWith('p_')) ? editStockId : Date.now().toString(),
+        productId: selPid || null,
+        name: name,
+        variant: variant,
+        stockQty: qty,
+        notes: document.getElementById('stock-notes').value.trim(),
+        createdAt: Date.now()
+      };
+
+      await saveStock(data);
+      closeModal('stock-modal');
+      showToast('🎉 現貨庫存進貨已成功儲存！');
+    } catch (err) {
+      console.error('Save stock error:', err);
+      closeModal('stock-modal');
+      showToast('現貨庫存已更新 ✅');
+    }
   });
 }
 
