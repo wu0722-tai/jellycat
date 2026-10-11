@@ -239,7 +239,7 @@
             <span class="pending-label">預估英鎊總計</span>
           </div>
         </div>
-        </div>
+        <div id="pending-list" class="orders-list"></div>
       </div>
 
       <!-- Inventory Tab -->
@@ -253,7 +253,7 @@
             <div class="stat-icon">🏬</div>
             <div class="stat-body">
               <div class="stat-value" id="stat-total-stock">0 件</div>
-              <div class="stat-label">現貨/備貨庫存</div>
+              <div class="stat-label">未分配庫存</div>
             </div>
           </div>
           <div class="stat-card green">
@@ -276,10 +276,29 @@
           <input type="text" id="inventory-search" class="search-input" placeholder="🔍 搜尋庫存商品…" />
         </div>
 
-        <div id="inventory-list" class="inventory-list">
+        <!-- 上半部：未分配庫存 -->
+        <div style="display:flex;align-items:center;gap:10px;margin:16px 0 8px">
+          <div style="flex:1;height:2px;background:linear-gradient(90deg,var(--purple),transparent)"></div>
+          <span style="font-size:13px;font-weight:800;color:var(--purple-light);white-space:nowrap">🏬 未分配現貨庫存</span>
+          <div style="flex:1;height:2px;background:linear-gradient(270deg,var(--purple),transparent)"></div>
+        </div>
+        <div id="inventory-unallocated-list" class="inventory-list">
           <div class="empty-state">
             <div class="empty-icon">🏬</div>
-            <p>尚無庫存資料，點右上角「＋ 商品進貨」新增！</p>
+            <p>尚無未分配庫存，點右上角「＋ 商品進貨」新增！</p>
+          </div>
+        </div>
+
+        <!-- 下半部：已分配/訂單已購商品 -->
+        <div style="display:flex;align-items:center;gap:10px;margin:20px 0 8px">
+          <div style="flex:1;height:2px;background:linear-gradient(90deg,var(--green),transparent)"></div>
+          <span style="font-size:13px;font-weight:800;color:var(--green);white-space:nowrap">✅ 已分配（訂單已購買）</span>
+          <div style="flex:1;height:2px;background:linear-gradient(270deg,var(--green),transparent)"></div>
+        </div>
+        <div id="inventory-allocated-list" class="inventory-list">
+          <div class="empty-state">
+            <div class="empty-icon">✅</div>
+            <p>尚無已分配商品</p>
           </div>
         </div>
       </div>
@@ -635,6 +654,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script type="module" src="app.js?v=20261011_4"></script>
+  <script type="module" src="app.js?v=20261011_5"></script>
 </body>
 </html>

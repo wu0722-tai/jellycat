@@ -1886,6 +1886,180 @@ document.querySelectorAll('.modal-overlay').forEach(modal => {
   });
 });
 
+// =============================================
+// Inventory Helpers & Rendering
+// =============================================
+
+function findInventoryItem(productId, name, variant) {
+  // First try exact productId match
+  if (productId) {
+    const byId = inventory.find(i => i.productId === productId);
+    if (byId) return byId;
+  }
+  // Then try name+variant match
+  if (name) {
+    const n = (name || '').trim().toLowerCase();
+    const v = (variant || '').trim().toLowerCase();
+    return inventory.find(i =>
+      (i.name || '').trim().toLowerCase() === n &&
+      (i.variant || '').trim().toLowerCase() === v
+    ) || null;
+  }
+  return null;
+}
+window.findInventoryItem = findInventoryItem;
+
+function allocateStockToUnit(itemIdx, unitIdx) {
+  if (!orderItems[itemIdx]) return;
+  const item = orderItems[itemIdx];
+  const invItem = findInventoryItem(item.productId, item.name, item.variant);
+  if (!invItem || invItem.stockQty <= 0) {
+    showToast('⚠️ 庫存不足，無法從庫存抵扣');
+    return;
+  }
+  const pqty = item.purchasedQty || 0;
+  if (unitIdx < pqty) return; // already purchased
+  item.purchasedQty = unitIdx + 1;
+  const diff = item.purchasedQty - pqty;
+  const deductQty = Math.min(invItem.stockQty, diff);
+  invItem.stockQty -= deductQty;
+  saveStock(invItem);
+  renderOrderItems();
+  renderInventory();
+  showToast(`⚡ 已從庫存抵扣 ${deductQty} 件「${escapeHtml(item.name)}」（庫存剩 ${invItem.stockQty} 件）`);
+}
+window.allocateStockToUnit = allocateStockToUnit;
+
+function renderInventory() {
+  const unallocatedEl = document.getElementById('inventory-unallocated-list');
+  const allocatedEl = document.getElementById('inventory-allocated-list');
+  if (!unallocatedEl || !allocatedEl) return;
+
+  const q = (inventorySearch || '').toLowerCase();
+  const quoteRate = settings.quoteRate || 50;
+
+  // ── Stats ──
+  const totalUnallocated = inventory.reduce((s, i) => s + (i.stockQty || 0), 0);
+  const statTotalStockEl = document.getElementById('stat-total-stock');
+  if (statTotalStockEl) statTotalStockEl.textContent = totalUnallocated + ' 件';
+
+  // Count purchased items from orders
+  let totalAllocated = 0;
+  orders.forEach(o => {
+    if (o.items && Array.isArray(o.items)) {
+      o.items.forEach(i => { totalAllocated += (i.purchasedQty || 0); });
+    }
+  });
+  const statPurchasedEl = document.getElementById('stat-purchased-orders');
+  if (statPurchasedEl) statPurchasedEl.textContent = totalAllocated + ' 件';
+
+  // Estimated stock value
+  let stockValue = 0;
+  inventory.forEach(inv => {
+    if (inv.stockQty > 0) {
+      const prod = products.find(p => p.id === inv.productId || (p.name === inv.name && p.variant === inv.variant));
+      const twd = prod ? (prod.twd || Math.round((prod.gbp || 0) * quoteRate)) : 0;
+      stockValue += twd * (inv.stockQty || 0);
+    }
+  });
+  const statStockValEl = document.getElementById('stat-stock-value');
+  if (statStockValEl) statStockValEl.textContent = 'NT$' + stockValue.toLocaleString();
+
+  // ── Section 1: Unallocated (inventory array) ──
+  const filtered = inventory.filter(inv =>
+    !q || (inv.name || '').toLowerCase().includes(q) || (inv.variant || '').toLowerCase().includes(q)
+  );
+
+  if (filtered.length === 0) {
+    unallocatedEl.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🏬</div>
+        <p>${inventory.length === 0 ? '尚無庫存資料，點右上角「＋ 商品進貨」新增！' : '沒有符合搜尋的庫存'}</p>
+      </div>`;
+  } else {
+    unallocatedEl.innerHTML = filtered.map(inv => {
+      const prod = products.find(p => p.id === inv.productId || (p.name === inv.name && p.variant === inv.variant));
+      const twd = prod ? (prod.twd || Math.round((prod.gbp || 0) * quoteRate)) : 0;
+      const totalVal = twd * (inv.stockQty || 0);
+      const stockColor = (inv.stockQty || 0) === 0 ? 'var(--red)' : (inv.stockQty || 0) <= 2 ? 'var(--orange)' : 'var(--green)';
+      return `
+        <div class="product-card" onclick="openEditStock('${inv.id}')">
+          <div class="product-card-left">
+            <div class="product-name">
+              ${escapeHtml(inv.name || '')}${inv.variant ? ` <span class="product-variant">${escapeHtml(inv.variant)}</span>` : ''}
+            </div>
+            <div class="product-price-row" style="margin-top:4px">
+              ${twd > 0 ? `<span class="product-twd" style="font-size:12px">NT$${twd.toLocaleString()}/件</span>` : ''}
+              ${inv.notes ? `<span style="font-size:11px;color:var(--text-dim)">📝 ${escapeHtml(inv.notes)}</span>` : ''}
+            </div>
+            ${totalVal > 0 ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">預估庫存價值 NT$${totalVal.toLocaleString()}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+            <span style="font-size:22px;font-weight:900;color:${stockColor};line-height:1">${inv.stockQty || 0}</span>
+            <span style="font-size:10px;color:var(--text-muted);font-weight:700">件庫存</span>
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <button type="button" class="qty-btn" onclick="event.stopPropagation();quickStockIn('${inv.id}',-1)" title="出庫-1">−</button>
+              <button type="button" class="qty-btn" onclick="event.stopPropagation();quickStockIn('${inv.id}',1)" title="進貨+1">＋</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Section 2: Allocated (purchased items from orders, aggregated by product) ──
+  const allocMap = {};
+  orders.forEach(o => {
+    const buyer = buyers.find(b => b.id === o.buyerId);
+    if (o.items && Array.isArray(o.items)) {
+      o.items.forEach(item => {
+        const pqty = item.purchasedQty || 0;
+        if (pqty <= 0) return;
+        const key = `${item.productId || item.name}__${item.variant || ''}`;
+        if (!allocMap[key]) {
+          allocMap[key] = { name: item.name || '', variant: item.variant || '', productId: item.productId || null, totalPurchased: 0, buyers: [] };
+        }
+        allocMap[key].totalPurchased += pqty;
+        if (buyer) allocMap[key].buyers.push({ name: buyer.name, qty: pqty });
+      });
+    }
+  });
+
+  const allocItems = Object.values(allocMap).filter(a =>
+    !q || (a.name || '').toLowerCase().includes(q) || (a.variant || '').toLowerCase().includes(q)
+  );
+
+  if (allocItems.length === 0) {
+    allocatedEl.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <p>尚無已購買分配的商品</p>
+      </div>`;
+  } else {
+    allocatedEl.innerHTML = allocItems.map(a => {
+      const prod = products.find(p => p.id === a.productId || (p.name === a.name && p.variant === a.variant));
+      const twd = prod ? (prod.twd || Math.round((prod.gbp || 0) * quoteRate)) : 0;
+      const buyerStr = a.buyers.map(b => `${escapeHtml(b.name)} ×${b.qty}`).join('、');
+      return `
+        <div class="product-card" style="border-color:rgba(16,185,129,0.3)">
+          <div class="product-card-left">
+            <div class="product-name">
+              ${escapeHtml(a.name || '')}${a.variant ? ` <span class="product-variant">${escapeHtml(a.variant)}</span>` : ''}
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
+              👤 ${buyerStr}
+            </div>
+            ${twd > 0 ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">NT$${twd.toLocaleString()}/件 × ${a.totalPurchased} = NT$${(twd * a.totalPurchased).toLocaleString()}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            <span style="font-size:22px;font-weight:900;color:var(--green);line-height:1">${a.totalPurchased}</span>
+            <span style="font-size:10px;color:var(--text-muted);font-weight:700">件已分配</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+}
+window.renderInventory = renderInventory;
+
 function renderAll() {
   renderDashboard();
   renderOrders();
