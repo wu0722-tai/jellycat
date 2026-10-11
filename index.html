@@ -47,6 +47,7 @@
       </div>
       <div class="header-right">
         <span id="user-info-badge" style="font-size:12px;color:var(--text-muted);margin-right:8px;font-weight:700"></span>
+        <button id="quick-export-btn" class="icon-btn" title="一鍵匯出完整備份 (JSON)">📥</button>
         <button id="settings-btn" class="icon-btn" title="設定">⚙️</button>
         <button id="logout-btn" class="icon-btn" title="登出">🚪</button>
       </div>
@@ -169,6 +170,7 @@
           <h2 class="page-title">訂單列表</h2>
           <div style="display:flex;gap:8px">
             <button class="secondary-btn" id="import-csv-btn" style="padding:8px 14px;border-radius:50px;background:var(--bg3);border:1px solid var(--card-border);color:var(--text);font-size:13px;font-weight:800;cursor:pointer">📥 匯入 CSV</button>
+            <button class="secondary-btn" id="export-orders-btn" style="padding:8px 14px;border-radius:50px;background:var(--bg3);border:1px solid var(--card-border);color:var(--text);font-size:13px;font-weight:800;cursor:pointer">📤 匯出訂單</button>
             <button class="add-btn" id="add-order-btn">＋ 新增代購單</button>
           </div>
         </div>
@@ -361,6 +363,19 @@
           <div style="font-weight:800;font-size:13px;color:var(--text);margin-bottom:4px">📤 發布資料給全體共享庫</div>
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">將您目前 Gmail 帳號 / 本機上的所有代購單與買家資料，發布覆蓋至「全體公共共享庫」讓大家同步使用。</div>
           <button type="button" class="secondary-btn full-btn" id="publish-to-shared-btn" style="background:linear-gradient(135deg,var(--purple),#ec4899);color:#fff;border:none;font-weight:800;font-size:13px;padding:10px">⚡ 立即將我目前的資料發布共享給全體</button>
+        </div>
+
+        <div class="form-section-label" style="margin-top:16px;margin-bottom:8px">📦 資料備份與轉移</div>
+        <div class="detail-card" style="background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);margin-bottom:16px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+            可將所有訂單、買家、商品庫存完整匯出成 JSON 備份檔（可提供給朋友匯入或自行留存），亦可匯入還原。
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <button type="button" class="secondary-btn" id="export-backup-json-btn" style="background:var(--green);color:#fff;border:none;font-weight:800;font-size:13px;padding:10px">📥 匯出完整備份 (JSON)</button>
+            <button type="button" class="secondary-btn" id="import-backup-json-btn" style="background:rgba(255,255,255,0.08);border:1px solid var(--border);font-weight:800;font-size:13px;padding:10px">📂 匯入備份 (JSON)</button>
+          </div>
+          <button type="button" class="secondary-btn full-btn" id="export-all-orders-csv-btn" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);font-size:12px;padding:8px">📊 匯出訂單總表為 CSV (Excel 格式)</button>
+          <input type="file" id="backup-file-input" accept=".json" style="display:none" />
         </div>
 
         <button class="primary-btn full-btn" id="save-settings-btn">儲存設定</button>

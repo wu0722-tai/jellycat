@@ -2617,3 +2617,229 @@ if (delStockBtnEl) {
     showToast('庫存已刪除');
   });
 }
+
+// =============================================
+// 資料匯出與備份管理 (Backup & Export Engine)
+// =============================================
+function exportFullBackup() {
+  try {
+    const backupData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      appName: 'Jellycat 代購系統',
+      storeConfig: currentStoreConfig,
+      settings: settings,
+      buyers: buyers,
+      orders: orders,
+      products: products,
+      inventory: inventory,
+      localStorageRaw: {
+        jc_data: localStorage.getItem('jc_data'),
+        jc_store_type: localStorage.getItem('jc_store_type'),
+        jc_store_custom_id: localStorage.getItem('jc_store_custom_id')
+      }
+    };
+
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json;charset=utf-8' });
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const filename = `jellycat_backup_${dateStr}.json`;
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+
+    showToast(`✅ 備份匯出成功！（共 ${orders.length} 筆訂單、${buyers.length} 位買家）`);
+  } catch (err) {
+    console.error('Export backup error:', err);
+    showToast('匯出失敗：' + (err.message || '未知錯誤'));
+  }
+}
+window.exportFullBackup = exportFullBackup;
+
+function handleBackupJsonUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      let importedOrders = 0;
+      let importedBuyers = 0;
+      let importedProducts = 0;
+      let importedInventory = 0;
+
+      if (data.buyers && Array.isArray(data.buyers)) {
+        const map = new Map(buyers.map(b => [b.id, b]));
+        data.buyers.forEach(b => { if (b && b.id) map.set(b.id, b); });
+        buyers = Array.from(map.values());
+        importedBuyers = data.buyers.length;
+      }
+      if (data.orders && Array.isArray(data.orders)) {
+        const map = new Map(orders.map(o => [o.id, o]));
+        data.orders.forEach(o => { if (o && o.id) map.set(o.id, o); });
+        orders = Array.from(map.values());
+        importedOrders = data.orders.length;
+      }
+      if (data.products && Array.isArray(data.products)) {
+        const map = new Map(products.map(p => [p.id, p]));
+        data.products.forEach(p => { if (p && p.id) map.set(p.id, p); });
+        products = Array.from(map.values());
+        importedProducts = data.products.length;
+      }
+      if (data.inventory && Array.isArray(data.inventory)) {
+        const map = new Map(inventory.map(i => [i.id, i]));
+        data.inventory.forEach(i => { if (i && i.id) map.set(i.id, i); });
+        inventory = Array.from(map.values());
+        importedInventory = data.inventory.length;
+      }
+      if (data.settings && typeof data.settings === 'object') {
+        Object.assign(settings, data.settings);
+        if (settings.rate && !settings.quoteRate) settings.quoteRate = settings.rate;
+        if (!settings.quoteRate) settings.quoteRate = 50;
+        if (!settings.costRate) settings.costRate = 41.5;
+        updateRateDisplay();
+      }
+
+      saveLocalData();
+      renderAll();
+
+      showToast(`🎉 成功匯入 ${importedOrders} 筆訂單、${importedBuyers} 位買家！`);
+
+      if (isCloudMode()) {
+        showToast('☁️ 正在將匯入的資料同步至雲端資料庫…');
+        try {
+          for (const b of buyers) await setDoc(getCloudDoc('buyers', b.id), b);
+          for (const o of orders) await setDoc(getCloudDoc('orders', o.id), o);
+          for (const p of products) await setDoc(getCloudDoc('products', p.id), p);
+          for (const inv of inventory) await setDoc(getCloudDoc('inventory', inv.id), inv);
+          await setDoc(getCloudDoc('settings', 'main'), settings);
+          showToast('✅ 資料已完整同步至 Firebase 雲端！');
+        } catch (syncErr) {
+          console.warn('Sync imported data error:', syncErr);
+          showToast('資料已儲存於本機，雲端同步受限（請檢查權限）');
+        }
+      }
+    } catch (err) {
+      console.error('Import backup error:', err);
+      showToast('❌ 還原失敗：無效的 JSON 備份檔案');
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function exportOrdersToCsv() {
+  try {
+    if (!orders || orders.length === 0) {
+      showToast('目前尚無訂單可匯出！');
+      return;
+    }
+    const costRate = settings.costRate || 41.5;
+    const headers = [
+      '訂單編號', '建立時間', '買家名稱', '買家電話', '取件門市/地址',
+      '訂購商品明細', '商品總件數', '英鎊標價(£)', '成本匯率',
+      '採購成本(NT$)', '總售價(NT$)', '已付訂金(NT$)', '預估獲利(NT$)',
+      '訂單狀態', '付款狀態', '備註'
+    ];
+
+    const rows = orders.map(o => {
+      const buyer = buyers.find(b => b.id === o.buyerId);
+      const buyerName = buyer ? (buyer.name || buyer.lineName || '') : '未知買家';
+      const phone = buyer ? (buyer.phone || '') : '';
+      const store = buyer ? (buyer.store || buyer.address || '') : '';
+
+      let itemDesc = '';
+      let totalQty = 0;
+      if (o.items && o.items.length > 0) {
+        itemDesc = o.items.map(i => `${i.name || ''}${i.variant ? `(${i.variant})` : ''} x${i.qty || 1}`).join('; ');
+        totalQty = o.items.reduce((s, i) => s + (parseInt(i.qty, 10) || 1), 0);
+      } else {
+        itemDesc = `${o.product || ''} x${o.qty || 1}`;
+        totalQty = parseInt(o.qty, 10) || 1;
+      }
+
+      const rev = getOrderRevenue(o);
+      const cost = Math.round(getOrderCost(o));
+      const profit = Math.round(rev - cost);
+      const sellingGbp = getOrderGbp(o);
+      const dateStr = o.createdAt ? new Date(o.createdAt).toLocaleString('zh-TW') : '';
+
+      return [
+        o.id || '',
+        dateStr,
+        buyerName,
+        phone,
+        store,
+        itemDesc,
+        totalQty,
+        sellingGbp.toFixed(2),
+        costRate,
+        cost,
+        rev,
+        o.deposit || 0,
+        profit,
+        statusLabel(o.status),
+        paymentLabel(o.payment),
+        o.notes || ''
+      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+    });
+
+    // UTF-8 BOM 避免 Excel 繁體中文亂碼
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const filename = `jellycat_orders_${dateStr}.csv`;
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+
+    showToast(`✅ 已匯出 ${orders.length} 筆訂單 CSV 檔案！`);
+  } catch (err) {
+    console.error('Export CSV error:', err);
+    showToast('匯出失敗：' + (err.message || '未知錯誤'));
+  }
+}
+window.exportOrdersToCsv = exportOrdersToCsv;
+
+// 註冊匯出與備份按鈕事件
+const quickExportBtn = document.getElementById('quick-export-btn');
+if (quickExportBtn) {
+  quickExportBtn.addEventListener('click', exportFullBackup);
+}
+
+const exportBackupJsonBtn = document.getElementById('export-backup-json-btn');
+if (exportBackupJsonBtn) {
+  exportBackupJsonBtn.addEventListener('click', exportFullBackup);
+}
+
+const importBackupJsonBtn = document.getElementById('import-backup-json-btn');
+const backupFileInput = document.getElementById('backup-file-input');
+if (importBackupJsonBtn && backupFileInput) {
+  importBackupJsonBtn.addEventListener('click', () => backupFileInput.click());
+  backupFileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleBackupJsonUpload(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+}
+
+const exportOrdersBtn = document.getElementById('export-orders-btn');
+if (exportOrdersBtn) {
+  exportOrdersBtn.addEventListener('click', exportOrdersToCsv);
+}
+
+const exportAllOrdersCsvBtn = document.getElementById('export-all-orders-csv-btn');
+if (exportAllOrdersCsvBtn) {
+  exportAllOrdersCsvBtn.addEventListener('click', exportOrdersToCsv);
+}
+
