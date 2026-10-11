@@ -90,12 +90,12 @@ if (demoBtn) {
 if (loginBtn) {
   loginBtn.addEventListener('click', async () => {
     if (location.protocol === 'file:') {
-      showToast('💡 提示：本機檔案模式直接進入，部署到網站後即可使用 Google 雲端同步');
+      alert('💡 提示：您目前是用本機檔案 (file://) 開啟。\n\n已自動為您進入系統！若要使用 Google 雲端同步，請在網址列打開：\nhttps://wu0722-tai.github.io/jellycat/');
       showDemoMode();
       return;
     }
     if (!auth) {
-      showToast('⚠️ Firebase 服務未就緒，為您切換至本機模式');
+      alert('⚠️ Firebase 服務未就緒，為您直接進入本機模式');
       showDemoMode();
       return;
     }
@@ -107,34 +107,22 @@ if (loginBtn) {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
 
-    // iOS / Safari 或彈窗受阻時的處理
-    const isSafariOrIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
     try {
-      if (isSafariOrIOS) {
-        // Safari 首選使用重定向避免彈窗攔截
-        showToast('🔄 正在前往 Google 登入頁面…');
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-
       await signInWithPopup(auth, provider);
       showToast('🎉 Google 登入成功！');
     } catch (e) {
       console.error('Login error:', e);
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request' || e.code === 'auth/popup-closed-by-user') {
-        showToast('🔄 彈窗受阻，切換為全頁面 Google 登入…');
-        try {
-          await signInWithRedirect(auth, provider);
-          return;
-        } catch (rErr) {
-          console.error('Redirect login error:', rErr);
-        }
+      if (e.code === 'auth/popup-blocked') {
+        alert('⚠️ 瀏覽器攔截了 Google 登入彈出視窗！\n\n已自動為您切換進入系統！');
+        showDemoMode();
       } else if (e.code === 'auth/unauthorized-domain') {
-        showToast('⚠️ 網域尚未在 Firebase 授權，已自動切換至離線模式進入');
+        alert('⚠️ 網域尚未在 Firebase 授權！\n\n已自動為您切換至本機模式進入。');
+        showDemoMode();
+      } else if (e.code === 'auth/popup-closed-by-user') {
+        showToast('已取消登入，為您進入離線模式');
         showDemoMode();
       } else {
-        showToast(`登入失敗（${e.message || '請確認 Firebase 狀態'}），為您切換至離線模式進入`);
+        alert(`登入提示（${e.message || e.code}）：已為您切換至離線模式直接進入！`);
         showDemoMode();
       }
     } finally {
@@ -173,6 +161,8 @@ function showDemoMode() {
   currentUser = { uid: 'demo', displayName: 'Demo User' };
   loadLocalData(); showApp();
 }
+window.showDemoMode = showDemoMode;
+window.showApp = showApp;
 
 // Data: Firestore & Local Storage
 const DEFAULT_SHARED_UID = 'pfJ1BVkrXNUoJCvM5qFceyNwqS32';
@@ -240,6 +230,7 @@ async function loadData() {
   if (!settings.costRate) settings.costRate = 41.5;
   updateRateDisplay();
 
+  try {
     unsubscribers.push(onSnapshot(getCloudCol('buyers'), snap => {
       buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       saveLocalData();

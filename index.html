@@ -32,7 +32,20 @@
         </svg>
         使用 Google 帳號登入
       </button>
-      <button type="button" id="demo-login-btn" class="google-btn" style="margin-top:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);color:var(--text);font-size:13px;font-weight:700">
+      <script>
+        function directEnterSystem() {
+          var login = document.getElementById('login-screen');
+          var app = document.getElementById('app-screen');
+          if (login && app) {
+            login.classList.remove('active');
+            app.classList.add('active');
+          }
+          if (window.showDemoMode) {
+            window.showDemoMode();
+          }
+        }
+      </script>
+      <button type="button" id="demo-login-btn" class="google-btn" onclick="directEnterSystem()" style="margin-top:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);color:var(--text);font-size:13px;font-weight:700">
         ⚡ 直接進入系統（離線/本機模式）
       </button>
       <p class="login-note">登入後資料將於跨 Gmail 帳號與跨裝置共享雲端資料庫即時同步；離線模式保存在本機</p>
@@ -701,6 +714,6 @@
       });
     }
   </script>
-  <script type="module" src="app.js?v=20261012_redirect1"></script>
+  <script type="module" src="app.js?v=20261012_v3"></script>
 </body>
 </html>
