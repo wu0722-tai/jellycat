@@ -879,4 +879,54 @@ html, body {
   background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.3); color: var(--yellow);
 }
 
+/* ===========================
+   Inventory UI Styles
+   =========================== */
+.inventory-list {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.inventory-card {
+  background: var(--card); border: 1px solid var(--card-border);
+  border-radius: var(--radius); padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  transition: all var(--transition);
+}
+.inventory-card:hover {
+  background: rgba(255,255,255,0.04); transform: translateY(-1px);
+}
+.inventory-card-left { flex: 1; min-width: 0; }
+.inventory-title {
+  font-size: 15px; font-weight: 800; color: var(--text);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.inventory-stock-row {
+  display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap;
+}
+.stock-count-badge {
+  background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4);
+  color: var(--green); font-size: 13px; font-weight: 900;
+  padding: 3px 9px; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px;
+}
+.purchased-count-badge {
+  background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.4);
+  color: #60a5fa; font-size: 13px; font-weight: 800;
+  padding: 3px 9px; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px;
+}
+.stock-tag-inline {
+  background: rgba(16,185,129,0.18); color: var(--green);
+  border: 1px solid rgba(16,185,129,0.4); font-size: 11px; font-weight: 900;
+  padding: 2px 8px; border-radius: 12px; display: inline-flex; align-items: center; gap: 3px;
+  margin-left: 6px;
+}
+.allocate-stock-btn {
+  background: linear-gradient(135deg, rgba(16,185,129,0.25), rgba(59,130,246,0.25));
+  border: 1px solid rgba(16,185,129,0.4); color: var(--green);
+  font-size: 11px; font-weight: 900; padding: 3px 8px; border-radius: 6px;
+  cursor: pointer; transition: all var(--transition); font-family: 'Nunito', sans-serif;
+  margin-left: 6px;
+}
+.allocate-stock-btn:hover {
+  background: var(--green); color: #fff; box-shadow: 0 2px 8px rgba(16,185,129,0.4);
+}
+
 

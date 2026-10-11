@@ -27,11 +27,13 @@ let settings = { quoteRate: 50, costRate: 41.5, depositRatio: 30 };
 let buyers = [];
 let orders = [];
 let products = [];
+let inventory = [];
 let unsubscribers = [];
 
 let editOrderId = null;
 let editBuyerId = null;
 let editProductId = null;
+let editStockId = null;
 let viewBuyerId = null;
 let selectedBuyerId = null;
 let orderItems = [];
@@ -40,6 +42,7 @@ let orderFilter = 'all';
 let orderSearch = '';
 let buyerSearch = '';
 let productSearch = '';
+let inventorySearch = '';
 
 // Init Firebase
 try {
@@ -181,11 +184,12 @@ async function syncLocalToCloudIfEmpty() {
   if (!isCloudMode()) return;
   try {
     const ordersSnap = await getDocs(getCloudCol('orders'));
-    if (ordersSnap.empty && (orders.length > 0 || buyers.length > 0 || products.length > 0)) {
-      showToast('☁️ 正在將本機對帳資料同步至選擇的雲端資料庫…');
+    if (ordersSnap.empty && (orders.length > 0 || buyers.length > 0 || products.length > 0 || inventory.length > 0)) {
+      showToast('☁️ 正在將本機對帳與庫存資料同步至選擇的雲端資料庫…');
       for (const b of buyers) await setDoc(getCloudDoc('buyers', b.id), b);
       for (const o of orders) await setDoc(getCloudDoc('orders', o.id), o);
       for (const p of products) await setDoc(getCloudDoc('products', p.id), p);
+      for (const inv of inventory) await setDoc(getCloudDoc('inventory', inv.id), inv);
       await setDoc(getCloudDoc('settings', 'main'), settings);
     }
   } catch (err) {
@@ -226,7 +230,7 @@ async function loadData() {
       if (!snap.empty) {
         orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         saveLocalData();
-        renderOrders(); renderDashboard(); renderPending();
+        renderOrders(); renderDashboard(); renderPending(); renderInventory();
       }
     }, err => {
       console.warn('Orders cloud sync error:', err.message);
@@ -236,13 +240,64 @@ async function loadData() {
       if (!snap.empty) {
         products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         saveLocalData();
-        renderProducts(); renderProductPicker();
+        renderProducts(); renderProductPicker(); renderInventory();
       }
     }, err => {
       console.warn('Products cloud sync error:', err.message);
     }));
+
+    unsubscribers.push(onSnapshot(getCloudCol('inventory'), snap => {
+      if (!snap.empty) {
+        inventory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        saveLocalData();
+        renderInventory(); renderProducts(); renderProductPicker();
+        if (typeof renderOrderItems === 'function') renderOrderItems();
+      }
+    }, err => {
+      console.warn('Inventory cloud sync error:', err.message);
+    }));
   } catch (e) {
     console.warn('Firestore snapshot setup failed:', e);
+  }
+}
+
+async function saveStock(data) {
+  const id = data.id || Date.now().toString();
+  if (!data.createdAt) data.createdAt = Date.now();
+  const idx = inventory.findIndex(item => item.id === id);
+  if (idx >= 0) inventory[idx] = { ...data, id }; else inventory.push({ ...data, id });
+  saveLocalData();
+  renderInventory();
+  renderProducts();
+  renderProductPicker();
+  if (typeof renderOrderItems === 'function') renderOrderItems();
+
+  if (isCloudMode()) {
+    try {
+      await setDoc(getCloudDoc('inventory', id), { ...data, id });
+    } catch (err) {
+      console.error('Cloud saveStock error:', err);
+      handleCloudError(err);
+    }
+  }
+  return id;
+}
+
+async function deleteStock(id) {
+  inventory = inventory.filter(item => item.id !== id);
+  saveLocalData();
+  renderInventory();
+  renderProducts();
+  renderProductPicker();
+  if (typeof renderOrderItems === 'function') renderOrderItems();
+
+  if (isCloudMode()) {
+    try {
+      await deleteDoc(getCloudDoc('inventory', id));
+    } catch (err) {
+      console.error('Cloud deleteStock error:', err);
+      handleCloudError(err);
+    }
   }
 }
 
@@ -377,6 +432,7 @@ function loadLocalData() {
     if (raw) {
       const d = JSON.parse(raw);
       buyers = d.buyers || []; orders = d.orders || []; products = d.products || [];
+      inventory = d.inventory || [];
       Object.assign(settings, d.settings || {});
     }
   } catch {}
@@ -386,11 +442,11 @@ function loadLocalData() {
   updateRateDisplay(); renderAll();
 }
 function saveLocalData() {
-  localStorage.setItem('jc_data', JSON.stringify({ buyers, orders, products, settings }));
+  localStorage.setItem('jc_data', JSON.stringify({ buyers, orders, products, settings, inventory }));
 }
 function cleanup() {
   unsubscribers.forEach(u => u && u()); unsubscribers = [];
-  buyers = []; orders = []; products = [];
+  buyers = []; orders = []; products = []; inventory = [];
 }
 
 // Tab Navigation
@@ -693,9 +749,13 @@ function renderProducts() {
     const cost = costGbp * costRate;
     const profit = twdPrice - cost;
     const pColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
+    const invItem = findInventoryItem(p.id, p.name, p.variant);
+    const availStock = invItem ? (invItem.stockQty || 0) : 0;
+    const stockBadge = availStock > 0 ? `<span class="stock-tag-inline">📦 庫存: ${availStock}</span>` : '';
+
     return `<div class="product-card" onclick="openEditProduct('${p.id}')">
       <div class="product-card-left">
-        <div class="product-name">${escapeHtml(p.name||'')}${p.variant?` <span class="product-variant">${escapeHtml(p.variant)}</span>`:''}</div>
+        <div class="product-name">${escapeHtml(p.name||'')}${p.variant?` <span class="product-variant">${escapeHtml(p.variant)}</span>`:''}${stockBadge}</div>
         <div class="product-price-row">
           <span class="product-gbp">£${p.gbp||0}</span>
           ${hasDiffCost ? `<span class="product-cost-badge" style="font-size:11px;background:rgba(234,179,8,0.15);color:var(--yellow);padding:2px 7px;border-radius:6px;border:1px solid rgba(234,179,8,0.3);font-weight:800">成本 £${p.costGbp}</span>` : ''}
@@ -1214,10 +1274,14 @@ function renderProductPicker() {
   container.innerHTML = list.map(p => {
     const twd = p.twd || Math.round((p.gbp || 0) * quoteRate);
     const hasDiffCost = (p.costGbp !== undefined && p.costGbp !== null && p.costGbp > 0 && Math.abs(p.costGbp - (p.gbp || 0)) > 0.001);
+    const invItem = findInventoryItem(p.id, p.name, p.variant);
+    const availStock = invItem ? (invItem.stockQty || 0) : 0;
+    const stockBadge = availStock > 0 ? `<span class="stock-tag-inline">📦 庫存: ${availStock}</span>` : '';
+
     return `
       <div class="product-picker-item" onclick="addProductToOrder('${p.id}')">
         <div class="picker-item-info">
-          <div class="picker-item-name">${escapeHtml(p.name || '')}${p.variant ? ` <span class="product-variant">${escapeHtml(p.variant)}</span>` : ''}</div>
+          <div class="picker-item-name">${escapeHtml(p.name || '')}${p.variant ? ` <span class="product-variant">${escapeHtml(p.variant)}</span>` : ''}${stockBadge}</div>
           <div class="picker-item-prices">£${p.gbp || 0}${hasDiffCost ? ` (成本 £${p.costGbp})` : ''} → NT$${twd.toLocaleString()}</div>
         </div>
         <button type="button" class="picker-add-btn">＋ 加入</button>
@@ -1277,13 +1341,27 @@ function renderOrderItems() {
     totalUnits += qty;
     const hasDiffCost = (item.costGbp !== undefined && item.costGbp !== null && item.costGbp > 0 && Math.abs(item.costGbp - (item.gbp || 0)) > 0.001);
 
+    const invItem = findInventoryItem(item.productId, item.name, item.variant);
+    const availStock = invItem ? (invItem.stockQty || 0) : 0;
+
     // Build per-unit toggle rows
     let unitRows = '';
     for (let u = 0; u < qty; u++) {
       const isPurchased = u < pqty;
+      let stockBadge = '';
+      if (!isPurchased && availStock > 0) {
+        stockBadge = `
+          <span class="stock-tag-inline">📦 庫存: ${availStock} 件</span>
+          <button type="button" class="allocate-stock-btn" onclick="event.stopPropagation(); allocateStockToUnit(${idx}, ${u})">⚡ 從庫存抵扣</button>
+        `;
+      }
+
       unitRows += `
         <div class="unit-row ${isPurchased ? 'purchased' : ''}" onclick="toggleUnitPurchase(${idx}, ${u})">
-          <span class="unit-label">${qty > 1 ? `第 ${u + 1}/${qty}` : '此商品'}</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span class="unit-label">${qty > 1 ? `第 ${u + 1}/${qty}` : '此商品'}</span>
+            ${stockBadge}
+          </div>
           <label class="toggle-switch" onclick="event.stopPropagation()">
             <input type="checkbox" ${isPurchased ? 'checked' : ''} onchange="toggleUnitPurchase(${idx}, ${u})">
             <span class="toggle-slider"></span>
@@ -1330,14 +1408,36 @@ function toggleUnitPurchase(itemIdx, unitIdx) {
   const item = orderItems[itemIdx];
   const qty = item.qty || 1;
   const pqty = item.purchasedQty || 0;
+
+  let newPqty = pqty;
   if (unitIdx < pqty) {
     // Un-purchase: set purchasedQty to unitIdx
-    item.purchasedQty = unitIdx;
+    newPqty = unitIdx;
+    const diff = pqty - newPqty;
+    item.purchasedQty = newPqty;
+
+    const invItem = findInventoryItem(item.productId, item.name, item.variant);
+    if (invItem) {
+      invItem.stockQty = (invItem.stockQty || 0) + diff;
+      saveStock(invItem);
+      showToast(`🔄 已將 ${diff} 件「${escapeHtml(item.name)}」退回現貨庫存（現有 ${invItem.stockQty} 件）`);
+    }
   } else {
     // Purchase: set purchasedQty to unitIdx + 1
-    item.purchasedQty = unitIdx + 1;
+    newPqty = unitIdx + 1;
+    const diff = newPqty - pqty;
+    item.purchasedQty = newPqty;
+
+    const invItem = findInventoryItem(item.productId, item.name, item.variant);
+    if (invItem && invItem.stockQty > 0) {
+      const deductQty = Math.min(invItem.stockQty, diff);
+      invItem.stockQty -= deductQty;
+      saveStock(invItem);
+      showToast(`📦 已從現貨庫存中自動扣除 ${deductQty} 件「${escapeHtml(item.name)}」（剩餘 ${invItem.stockQty} 件）`);
+    }
   }
   renderOrderItems();
+  renderInventory();
 }
 window.toggleUnitPurchase = toggleUnitPurchase;
 
@@ -1781,6 +1881,7 @@ function renderAll() {
   renderDashboard();
   renderOrders();
   renderProducts();
+  renderInventory();
   renderBuyers();
   renderPending();
 }
@@ -2172,5 +2273,138 @@ if (confirmImportBtn) {
       confirmImportBtn.disabled = false;
       confirmImportBtn.textContent = '確認匯入資料';
     }
+  });
+}
+
+// Stock Modal & Search Event Listeners
+const invSearchEl = document.getElementById('inventory-search');
+if (invSearchEl) {
+  invSearchEl.addEventListener('input', e => {
+    inventorySearch = e.target.value;
+    renderInventory();
+  });
+}
+
+const addStockBtnEl = document.getElementById('add-stock-btn');
+if (addStockBtnEl) {
+  addStockBtnEl.addEventListener('click', openAddStock);
+}
+
+function openAddStock() {
+  editStockId = null;
+  document.getElementById('stock-modal-title').textContent = '📦 商品進貨 / 新增現貨庫存';
+  const sel = document.getElementById('stock-product-select');
+  if (sel) {
+    sel.innerHTML = `<option value="">-- 自訂商品名稱 / 選擇商品庫 --</option>` +
+      products.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.variant ? ` (${escapeHtml(p.variant)})` : ''}</option>`).join('');
+  }
+  document.getElementById('stock-name').value = '';
+  document.getElementById('stock-variant').value = '';
+  document.getElementById('stock-qty').value = 1;
+  document.getElementById('stock-notes').value = '';
+  document.getElementById('delete-stock-btn').style.display = 'none';
+  openModal('stock-modal');
+}
+window.openAddStock = openAddStock;
+
+const stockSelectEl = document.getElementById('stock-product-select');
+if (stockSelectEl) {
+  stockSelectEl.addEventListener('change', () => {
+    const pid = stockSelectEl.value;
+    if (pid) {
+      const p = products.find(x => x.id === pid);
+      if (p) {
+        document.getElementById('stock-name').value = p.name || '';
+        document.getElementById('stock-variant').value = p.variant || '';
+      }
+    }
+  });
+}
+
+function openEditStock(id) {
+  const item = inventory.find(x => x.id === id) || (id.startsWith('p_') ? {
+    id: id,
+    productId: id.replace('p_', ''),
+    name: products.find(p => p.id === id.replace('p_', ''))?.name || '',
+    variant: products.find(p => p.id === id.replace('p_', ''))?.variant || '',
+    stockQty: 0,
+    notes: ''
+  } : null);
+
+  if (!item) return;
+  editStockId = item.id;
+  document.getElementById('stock-modal-title').textContent = '✏️ 修改現貨庫存';
+  const sel = document.getElementById('stock-product-select');
+  if (sel) {
+    sel.innerHTML = `<option value="">-- 自訂商品名稱 / 選擇商品庫 --</option>` +
+      products.map(p => `<option value="${p.id}" ${p.id === item.productId ? 'selected' : ''}>${escapeHtml(p.name)}${p.variant ? ` (${escapeHtml(p.variant)})` : ''}</option>`).join('');
+  }
+  document.getElementById('stock-name').value = item.name || '';
+  document.getElementById('stock-variant').value = item.variant || '';
+  document.getElementById('stock-qty').value = item.stockQty || 0;
+  document.getElementById('stock-notes').value = item.notes || '';
+  document.getElementById('delete-stock-btn').style.display = (item.id && item.id.startsWith('p_')) ? 'none' : 'block';
+  openModal('stock-modal');
+}
+window.openEditStock = openEditStock;
+
+function quickStockIn(id, qtyDelta) {
+  let item = inventory.find(x => x.id === id);
+  if (!item && id.startsWith('p_')) {
+    const pid = id.replace('p_', '');
+    const p = products.find(x => x.id === pid);
+    if (p) {
+      item = {
+        id: Date.now().toString(),
+        productId: p.id,
+        name: p.name,
+        variant: p.variant,
+        stockQty: qtyDelta,
+        notes: ''
+      };
+      saveStock(item);
+      showToast(`🎉 已成功為「${escapeHtml(p.name)}」進貨 ${qtyDelta} 件！`);
+      return;
+    }
+  }
+  if (item) {
+    item.stockQty = Math.max(0, (item.stockQty || 0) + qtyDelta);
+    saveStock(item);
+    showToast(`🎉 已為「${escapeHtml(item.name)}」進貨 ${qtyDelta} 件 (現有 ${item.stockQty} 件)`);
+  }
+}
+window.quickStockIn = quickStockIn;
+
+const saveStockBtnEl = document.getElementById('save-stock-btn');
+if (saveStockBtnEl) {
+  saveStockBtnEl.addEventListener('click', async () => {
+    const name = document.getElementById('stock-name').value.trim();
+    const qty = parseInt(document.getElementById('stock-qty').value, 10);
+    if (!name) { showToast('請填寫商品名稱 🏷️'); return; }
+    if (isNaN(qty) || qty < 0) { showToast('請填寫正確的庫存數量 📦'); return; }
+
+    const selPid = document.getElementById('stock-product-select').value;
+    const data = {
+      id: (editStockId && !editStockId.startsWith('p_')) ? editStockId : Date.now().toString(),
+      productId: selPid || null,
+      name,
+      variant: document.getElementById('stock-variant').value.trim(),
+      stockQty: qty,
+      notes: document.getElementById('stock-notes').value.trim(),
+      createdAt: Date.now()
+    };
+    await saveStock(data);
+    closeModal('stock-modal');
+    showToast('現貨庫存設定已更新 ✅');
+  });
+}
+
+const delStockBtnEl = document.getElementById('delete-stock-btn');
+if (delStockBtnEl) {
+  delStockBtnEl.addEventListener('click', async () => {
+    if (!editStockId || editStockId.startsWith('p_') || !confirm('確定要刪除此庫存項目？')) return;
+    await deleteStock(editStockId);
+    closeModal('stock-modal');
+    showToast('庫存已刪除');
   });
 }

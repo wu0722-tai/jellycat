@@ -65,6 +65,10 @@
         <span class="tab-icon">🏪</span>
         <span class="tab-label">商品庫</span>
       </button>
+      <button class="tab-btn" data-tab="inventory" id="tab-inventory">
+        <span class="tab-icon">🏬</span>
+        <span class="tab-label">庫存</span>
+      </button>
       <button class="tab-btn" data-tab="buyers" id="tab-buyers">
         <span class="tab-icon">👥</span>
         <span class="tab-label">買家</span>
@@ -235,10 +239,47 @@
             <span class="pending-label">預估英鎊總計</span>
           </div>
         </div>
-        <div id="pending-list" class="orders-list">
+        </div>
+      </div>
+
+      <!-- Inventory Tab -->
+      <div class="tab-page" id="page-inventory">
+        <div class="page-header">
+          <h2 class="page-title">庫存管理</h2>
+          <button class="add-btn" id="add-stock-btn">＋ 商品進貨</button>
+        </div>
+        <div class="stat-grid" style="margin-bottom:16px">
+          <div class="stat-card purple">
+            <div class="stat-icon">🏬</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-total-stock">0 件</div>
+              <div class="stat-label">現貨/備貨庫存</div>
+            </div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-icon">✅</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-purchased-orders">0 件</div>
+              <div class="stat-label">訂單已購/分配總量</div>
+            </div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-icon">💰</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-stock-value">NT$0</div>
+              <div class="stat-label">現貨庫存預估價值</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="search-wrap">
+          <input type="text" id="inventory-search" class="search-input" placeholder="🔍 搜尋庫存商品…" />
+        </div>
+
+        <div id="inventory-list" class="inventory-list">
           <div class="empty-state">
-            <div class="empty-icon">🎉</div>
-            <p>所有商品都已購買！</p>
+            <div class="empty-icon">🏬</div>
+            <p>尚無庫存資料，點右上角「＋ 商品進貨」新增！</p>
           </div>
         </div>
       </div>
@@ -547,6 +588,47 @@
           <div class="modal-actions" style="margin-top:14px">
             <button class="primary-btn full-btn" id="confirm-import-csv-btn">確認匯入資料</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stock Modal -->
+  <div class="modal-overlay" id="stock-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 id="stock-modal-title">📦 商品進貨 / 新增現貨庫存</h3>
+        <button class="modal-close" data-modal="stock-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">選取商品品項</label>
+          <select id="stock-product-select" class="form-input form-select">
+            <option value="">-- 自訂商品名稱 / 選擇商品庫 --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品名稱 <span class="required">*</span></label>
+          <input type="text" id="stock-name" class="form-input" placeholder="e.g. Bashful Beige Bunny Medium" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">尺寸 / 款式</label>
+          <input type="text" id="stock-variant" class="form-input" placeholder="e.g. Medium / 粉色" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">現貨 / 進貨數量 <span class="required">*</span></label>
+          <div class="input-suffix-wrap">
+            <input type="number" id="stock-qty" class="form-input" value="1" min="0" step="1" />
+            <span class="input-suffix">件</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">進貨來源 / 備註</label>
+          <textarea id="stock-notes" class="form-input form-textarea" placeholder="例如：倫敦 Selfridges 專櫃現貨備貨…" rows="2"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="danger-btn" id="delete-stock-btn" style="display:none">刪除此庫存</button>
+          <button class="primary-btn" id="save-stock-btn">確認進貨入庫</button>
         </div>
       </div>
     </div>
