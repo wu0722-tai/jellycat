@@ -501,6 +501,34 @@ if (storeModeSelect) {
   storeModeSelect.addEventListener('change', toggleCustomStoreGroup);
 }
 
+const forceSyncBtn = document.getElementById('force-sync-current-cloud-btn');
+if (forceSyncBtn) {
+  forceSyncBtn.addEventListener('click', async () => {
+    if (!isCloudMode()) {
+      showToast('⚠️ 請先登入 Google 帳號才能同步至雲端');
+      return;
+    }
+    const origHtml = forceSyncBtn.innerHTML;
+    forceSyncBtn.disabled = true;
+    forceSyncBtn.textContent = '⏳ 正在上傳同步至雲端…';
+    try {
+      showToast(`☁️ 正在將 ${orders.length} 筆訂單上傳至雲端…`);
+      for (const b of buyers) await setDoc(getCloudDoc('buyers', b.id), b);
+      for (const o of orders) await setDoc(getCloudDoc('orders', o.id), o);
+      for (const p of products) await setDoc(getCloudDoc('products', p.id), p);
+      for (const inv of inventory) await setDoc(getCloudDoc('inventory', inv.id), inv);
+      await setDoc(getCloudDoc('settings', 'main'), settings);
+      showToast(`🎉 成功同步！${orders.length} 筆訂單已寫入雲端！`);
+    } catch (err) {
+      console.error('Force sync error:', err);
+      showToast('❌ 上傳失敗：' + (err.message || '請確認 Firebase Rules 規則'));
+    } finally {
+      forceSyncBtn.disabled = false;
+      forceSyncBtn.innerHTML = origHtml;
+    }
+  });
+}
+
 const publishBtn = document.getElementById('publish-to-shared-btn');
 if (publishBtn) {
   publishBtn.addEventListener('click', async () => {
