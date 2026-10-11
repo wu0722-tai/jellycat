@@ -213,46 +213,35 @@ async function loadData() {
   if (!settings.costRate) settings.costRate = 41.5;
   updateRateDisplay();
 
-  await syncLocalToCloudIfEmpty();
-
-  try {
     unsubscribers.push(onSnapshot(getCloudCol('buyers'), snap => {
-      if (!snap.empty) {
-        buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        saveLocalData();
-        renderBuyers(); renderDashboard();
-      }
+      buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      saveLocalData();
+      renderBuyers(); renderDashboard();
     }, err => {
       console.warn('Buyers cloud sync error:', err.message);
     }));
 
     unsubscribers.push(onSnapshot(getCloudCol('orders'), snap => {
-      if (!snap.empty) {
-        orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        saveLocalData();
-        renderOrders(); renderDashboard(); renderPending(); renderInventory();
-      }
+      orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      saveLocalData();
+      renderOrders(); renderDashboard(); renderPending(); renderInventory();
     }, err => {
       console.warn('Orders cloud sync error:', err.message);
     }));
 
     unsubscribers.push(onSnapshot(getCloudCol('products'), snap => {
-      if (!snap.empty) {
-        products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        saveLocalData();
-        renderProducts(); renderProductPicker(); renderInventory();
-      }
+      products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      saveLocalData();
+      renderProducts(); renderProductPicker(); renderInventory();
     }, err => {
       console.warn('Products cloud sync error:', err.message);
     }));
 
     unsubscribers.push(onSnapshot(getCloudCol('inventory'), snap => {
-      if (!snap.empty) {
-        inventory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        saveLocalData();
-        renderInventory(); renderProducts(); renderProductPicker();
-        if (typeof renderOrderItems === 'function') renderOrderItems();
-      }
+      inventory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      saveLocalData();
+      renderInventory(); renderProducts(); renderProductPicker();
+      if (typeof renderOrderItems === 'function') renderOrderItems();
     }, err => {
       console.warn('Inventory cloud sync error:', err.message);
     }));
@@ -603,6 +592,9 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
   if (modeChanged && isCloudMode()) {
     showToast('☁️ 正在為您連線切換至選擇的資料庫…');
     cleanup();
+    buyers = []; orders = []; products = []; inventory = [];
+    saveLocalData();
+    renderAll();
     await loadData();
   } else {
     renderAll();
