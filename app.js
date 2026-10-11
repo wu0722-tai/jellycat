@@ -3,7 +3,7 @@
 // =============================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, setDoc, getDocs,
@@ -49,6 +49,18 @@ try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+
+  // 處理 Redirect 登入回傳結果（相容 Safari / 手機端）
+  getRedirectResult(auth).then(result => {
+    if (result && result.user) {
+      currentUser = result.user;
+      showApp();
+      loadData();
+    }
+  }).catch(err => {
+    console.warn('Redirect auth warning:', err);
+  });
+
   onAuthStateChanged(auth, user => {
     if (user) {
       currentUser = user;
@@ -90,24 +102,39 @@ if (loginBtn) {
     const origHtml = loginBtn.innerHTML;
     loginBtn.disabled = true;
     loginBtn.style.opacity = '0.7';
-    loginBtn.innerHTML = '<span>⏳ 正在開啟 Google 登入視窗…</span>';
+    loginBtn.innerHTML = '<span>⏳ 正在開啟 Google 登入…</span>';
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    // iOS / Safari 或彈窗受阻時的處理
+    const isSafariOrIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+      if (isSafariOrIOS) {
+        // Safari 首選使用重定向避免彈窗攔截
+        showToast('🔄 正在前往 Google 登入頁面…');
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       await signInWithPopup(auth, provider);
       showToast('🎉 Google 登入成功！');
     } catch (e) {
       console.error('Login error:', e);
-      if (e.code === 'auth/popup-closed-by-user') {
-        showToast('已取消登入');
-      } else if (e.code === 'auth/popup-blocked') {
-        showToast('⚠️ 瀏覽器攔截了彈出視窗，請允許彈出視窗後重試');
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request' || e.code === 'auth/popup-closed-by-user') {
+        showToast('🔄 彈窗受阻，切換為全頁面 Google 登入…');
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (rErr) {
+          console.error('Redirect login error:', rErr);
+        }
       } else if (e.code === 'auth/unauthorized-domain') {
-        showToast('⚠️ 網域尚未在 Firebase 授權，已自動為您切換至離線模式進入');
+        showToast('⚠️ 網域尚未在 Firebase 授權，已自動切換至離線模式進入');
         showDemoMode();
       } else {
-        showToast(`登入失敗（${e.message || '請確認 Firebase 已啟用 Google 登入'}），為您切換至離線模式`);
+        showToast(`登入失敗（${e.message || '請確認 Firebase 狀態'}），為您切換至離線模式進入`);
         showDemoMode();
       }
     } finally {
