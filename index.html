@@ -691,6 +691,16 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script type="module" src="app.js?v=20261011_5"></script>
+  <script>
+    if (location.protocol === 'file:') {
+      document.addEventListener('DOMContentLoaded', () => {
+        const note = document.querySelector('.login-note');
+        if (note) {
+          note.innerHTML = '<span style="color:#f59e0b;font-weight:bold;line-height:1.6;display:block">⚠️ 注意：您目前是用本機檔案 (file://) 開啟，瀏覽器安全政策會阻擋 JavaScript 模組運作。<br>請務必直接用網站網址開啟：<br><a href="https://wu0722-tai.github.io/" style="color:#60a5fa;text-decoration:underline">https://wu0722-tai.github.io/</a></span>';
+        }
+      });
+    }
+  </script>
+  <script type="module" src="app.js?v=20261012_dedup1"></script>
 </body>
 </html>
