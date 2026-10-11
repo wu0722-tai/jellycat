@@ -230,6 +230,7 @@ async function loadData() {
   if (!settings.costRate) settings.costRate = 41.5;
   updateRateDisplay();
 
+  // 監聽雲端資料變動 (Firestore Realtime Snapshots)
   try {
     unsubscribers.push(onSnapshot(getCloudCol('buyers'), snap => {
       buyers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
