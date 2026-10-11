@@ -2718,35 +2718,40 @@ function handleBackupJsonUpload(file) {
   reader.onload = async (e) => {
     try {
       const data = JSON.parse(e.target.result);
-      let importedOrders = 0;
-      let importedBuyers = 0;
-      let importedProducts = 0;
-      let importedInventory = 0;
+      if (!data || (!data.orders && !data.buyers)) {
+        showToast('❌ 無效的 JSON 備份檔');
+        return;
+      }
+      const isReplace = confirm(`備份檔含有 ${data.orders?.length || 0} 筆訂單、${data.buyers?.length || 0} 位買家！\n\n點選【確定】：以備份檔「完全還原覆蓋」目前系統（推薦！可清除所有重複訂單，直接恢復至乾淨的 28 筆）\n點選【取消】：與目前現有資料進行合併`);
 
-      if (data.buyers && Array.isArray(data.buyers)) {
-        const map = new Map(buyers.map(b => [b.id, b]));
-        data.buyers.forEach(b => { if (b && b.id) map.set(b.id, b); });
-        buyers = Array.from(map.values());
-        importedBuyers = data.buyers.length;
+      if (isReplace) {
+        if (data.buyers && Array.isArray(data.buyers)) buyers = data.buyers;
+        if (data.orders && Array.isArray(data.orders)) orders = data.orders;
+        if (data.products && Array.isArray(data.products)) products = data.products;
+        if (data.inventory && Array.isArray(data.inventory)) inventory = data.inventory;
+      } else {
+        if (data.buyers && Array.isArray(data.buyers)) {
+          const map = new Map(buyers.map(b => [b.id, b]));
+          data.buyers.forEach(b => { if (b && b.id) map.set(b.id, b); });
+          buyers = Array.from(map.values());
+        }
+        if (data.orders && Array.isArray(data.orders)) {
+          const map = new Map(orders.map(o => [o.id, o]));
+          data.orders.forEach(o => { if (o && o.id) map.set(o.id, o); });
+          orders = Array.from(map.values());
+        }
+        if (data.products && Array.isArray(data.products)) {
+          const map = new Map(products.map(p => [p.id, p]));
+          data.products.forEach(p => { if (p && p.id) map.set(p.id, p); });
+          products = Array.from(map.values());
+        }
+        if (data.inventory && Array.isArray(data.inventory)) {
+          const map = new Map(inventory.map(i => [i.id, i]));
+          data.inventory.forEach(i => { if (i && i.id) map.set(i.id, i); });
+          inventory = Array.from(map.values());
+        }
       }
-      if (data.orders && Array.isArray(data.orders)) {
-        const map = new Map(orders.map(o => [o.id, o]));
-        data.orders.forEach(o => { if (o && o.id) map.set(o.id, o); });
-        orders = Array.from(map.values());
-        importedOrders = data.orders.length;
-      }
-      if (data.products && Array.isArray(data.products)) {
-        const map = new Map(products.map(p => [p.id, p]));
-        data.products.forEach(p => { if (p && p.id) map.set(p.id, p); });
-        products = Array.from(map.values());
-        importedProducts = data.products.length;
-      }
-      if (data.inventory && Array.isArray(data.inventory)) {
-        const map = new Map(inventory.map(i => [i.id, i]));
-        data.inventory.forEach(i => { if (i && i.id) map.set(i.id, i); });
-        inventory = Array.from(map.values());
-        importedInventory = data.inventory.length;
-      }
+
       if (data.settings && typeof data.settings === 'object') {
         Object.assign(settings, data.settings);
         if (settings.rate && !settings.quoteRate) settings.quoteRate = settings.rate;
@@ -2758,20 +2763,19 @@ function handleBackupJsonUpload(file) {
       saveLocalData();
       renderAll();
 
-      showToast(`🎉 成功匯入 ${importedOrders} 筆訂單、${importedBuyers} 位買家！`);
+      showToast(`🎉 成功載入！目前訂單共 ${orders.length} 筆、買家 ${buyers.length} 位！`);
 
       if (isCloudMode()) {
-        showToast('☁️ 正在將匯入的資料同步至雲端資料庫…');
+        showToast('☁️ 正在同步至雲端資料庫…');
         try {
           for (const b of buyers) await setDoc(getCloudDoc('buyers', b.id), b);
           for (const o of orders) await setDoc(getCloudDoc('orders', o.id), o);
           for (const p of products) await setDoc(getCloudDoc('products', p.id), p);
           for (const inv of inventory) await setDoc(getCloudDoc('inventory', inv.id), inv);
           await setDoc(getCloudDoc('settings', 'main'), settings);
-          showToast('✅ 資料已完整同步至 Firebase 雲端！');
+          showToast('✅ 資料已完整同步至雲端！');
         } catch (syncErr) {
           console.warn('Sync imported data error:', syncErr);
-          showToast('資料已儲存於本機，雲端同步受限（請檢查權限）');
         }
       }
     } catch (err) {
@@ -2780,6 +2784,146 @@ function handleBackupJsonUpload(file) {
     }
   };
   reader.readAsText(file, 'utf-8');
+}
+
+// =============================================
+// 一鍵清除重複訂單與買家 (Deduplication Engine)
+// =============================================
+async function deduplicateOrdersAndBuyers() {
+  if (!orders || orders.length === 0) {
+    showToast('目前尚無訂單可去重！');
+    return;
+  }
+
+  // 以買家身分（電話或姓名）為唯一主鍵進行去重（因為每位買家只有一張代購單）
+  function getOrderBuyerKey(o) {
+    const b = buyers.find(x => x.id === o.buyerId);
+    let name = (b?.name || o.buyerName || '').trim().toLowerCase().replace(/\s+/g, '');
+    let phone = (b?.phone || o.buyerPhone || '').trim();
+    if (phone && phone.length === 9 && phone.startsWith('9')) phone = '0' + phone;
+
+    if (phone) return `p_${phone}`;
+    if (name) return `n_${name}`;
+    return `id_${o.id}`;
+  }
+
+  const groups = new Map();
+  orders.forEach(o => {
+    const k = getOrderBuyerKey(o);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(o);
+  });
+
+  const keptOrders = [];
+  const removedOrders = [];
+
+  const statusScore = { shipped: 5, arrived: 4, ordered: 3, pending: 2, cancelled: 1 };
+  const payScore = { paid: 3, deposit: 2, unpaid: 1 };
+
+  groups.forEach(list => {
+    if (list.length === 1) {
+      keptOrders.push(list[0]);
+    } else {
+      // 依進度優先級排序，保留進度最完整的一筆（例如已到貨、已付款、商品數量更多者）
+      list.sort((a, b) => {
+        const sA = statusScore[a.status] || 0;
+        const sB = statusScore[b.status] || 0;
+        if (sA !== sB) return sB - sA;
+
+        const pA = payScore[a.payment] || 0;
+        const pB = payScore[b.payment] || 0;
+        if (pA !== pB) return pB - pA;
+
+        const qA = (a.items && a.items.length) ? a.items.reduce((s, i) => s + (parseInt(i.qty, 10) || 1), 0) : (parseInt(a.qty, 10) || 1);
+        const qB = (b.items && b.items.length) ? b.items.reduce((s, i) => s + (parseInt(i.qty, 10) || 1), 0) : (parseInt(b.qty, 10) || 1);
+        if (qA !== qB) return qB - qA;
+
+        const depA = parseFloat(a.deposit) || 0;
+        const depB = parseFloat(b.deposit) || 0;
+        if (depA !== depB) return depB - depA;
+
+        const noteA = (a.notes || '').length;
+        const noteB = (b.notes || '').length;
+        if (noteA !== noteB) return noteB - noteA;
+
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+
+      keptOrders.push(list[0]);
+      for (let i = 1; i < list.length; i++) {
+        removedOrders.push(list[i]);
+      }
+    }
+  });
+
+  // 同步比對清理重複的買家名冊
+  const buyerGroups = new Map();
+  buyers.forEach(b => {
+    let name = (b.name || '').trim().toLowerCase().replace(/\s+/g, '');
+    let phone = (b.phone || '').trim();
+    if (phone && phone.length === 9 && phone.startsWith('9')) phone = '0' + phone;
+    const k = phone ? `p_${phone}` : `n_${name}`;
+    if (!buyerGroups.has(k)) buyerGroups.set(k, []);
+    buyerGroups.get(k).push(b);
+  });
+
+  const keptBuyers = [];
+  const removedBuyers = [];
+  const buyerIdRemap = new Map();
+
+  buyerGroups.forEach(list => {
+    const primary = list[0];
+    keptBuyers.push(primary);
+    for (let i = 1; i < list.length; i++) {
+      removedBuyers.push(list[i]);
+      buyerIdRemap.set(list[i].id, primary.id);
+    }
+  });
+
+  // 將保留訂單中的買家 ID 重新校正對齊
+  keptOrders.forEach(o => {
+    if (buyerIdRemap.has(o.buyerId)) {
+      o.buyerId = buyerIdRemap.get(o.buyerId);
+    }
+  });
+
+  const orderDiff = removedOrders.length;
+  const buyerDiff = removedBuyers.length;
+
+  if (orderDiff === 0 && buyerDiff === 0) {
+    showToast('✨ 系統比對完成：目前沒有任何重複訂單！');
+    return;
+  }
+
+  const msg = `比對出 ${orderDiff} 筆重複訂單、${buyerDiff} 位重複買家！\n\n確定要刪除多餘項目，恢復為 ${keptOrders.length} 筆正常訂單嗎？`;
+  if (!confirm(msg)) return;
+
+  orders = keptOrders;
+  buyers = keptBuyers;
+
+  saveLocalData();
+  renderAll();
+
+  if (isCloudMode()) {
+    showToast(`☁️ 正在清理雲端資料庫中的重複項目…`);
+    try {
+      for (const o of removedOrders) await deleteDoc(getCloudDoc('orders', o.id));
+      for (const b of removedBuyers) await deleteDoc(getCloudDoc('buyers', b.id));
+      for (const o of keptOrders) await setDoc(getCloudDoc('orders', o.id), o);
+      for (const b of keptBuyers) await setDoc(getCloudDoc('buyers', b.id), b);
+      showToast('☁️ 雲端資料庫已同步更新完畢！');
+    } catch (err) {
+      console.warn('Cloud dedup error:', err);
+    }
+  }
+
+  showToast(`🎉 清理成功！已刪除 ${orderDiff} 筆重複訂單，精準保留 ${orders.length} 筆正確訂單！`);
+}
+window.deduplicateOrdersAndBuyers = deduplicateOrdersAndBuyers;
+
+const dedupOrdersBtn = document.getElementById('dedup-orders-btn');
+if (dedupOrdersBtn) {
+  dedupOrdersBtn.addEventListener('click', deduplicateOrdersAndBuyers);
 }
 
 function exportOrdersToCsv() {
@@ -2905,134 +3049,6 @@ if (clearLocalCacheBtn) {
   });
 }
 
-// =============================================
-// 一鍵清除重複訂單與買家 (Deduplication Engine)
-// =============================================
-async function deduplicateOrdersAndBuyers() {
-  if (!orders || orders.length === 0) {
-    showToast('目前尚無訂單可去重！');
-    return;
-  }
 
-  function getOrderKey(o) {
-    const b = buyers.find(x => x.id === o.buyerId);
-    const bName = (b?.name || o.buyerName || '').trim().toLowerCase();
-    const items = (o.items && o.items.length) ? o.items : [{ name: o.product, qty: o.qty, variant: o.variant }];
-    const itemsKey = items.map(i => `${(i.name || '').trim()}|${(i.variant || '').trim()}|${i.qty || 1}`).sort().join(';');
-    const rev = getOrderRevenue(o);
-    return `${bName}___${itemsKey}___${rev}`;
-  }
-
-  const groups = new Map();
-  orders.forEach(o => {
-    const k = getOrderKey(o);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(o);
-  });
-
-  const keptOrders = [];
-  const removedOrders = [];
-
-  const statusScore = { shipped: 5, arrived: 4, ordered: 3, pending: 2, cancelled: 1 };
-  const payScore = { paid: 3, deposit: 2, unpaid: 1 };
-
-  groups.forEach(list => {
-    if (list.length === 1) {
-      keptOrders.push(list[0]);
-    } else {
-      // 依進度優先級排序，保留進度最完整的一筆（例如已到貨、已付款）
-      list.sort((a, b) => {
-        const sA = statusScore[a.status] || 0;
-        const sB = statusScore[b.status] || 0;
-        if (sA !== sB) return sB - sA;
-
-        const pA = payScore[a.payment] || 0;
-        const pB = payScore[b.payment] || 0;
-        if (pA !== pB) return pB - pA;
-
-        const depA = parseFloat(a.deposit) || 0;
-        const depB = parseFloat(b.deposit) || 0;
-        if (depA !== depB) return depB - depA;
-
-        const noteA = (a.notes || '').length;
-        const noteB = (b.notes || '').length;
-        if (noteA !== noteB) return noteB - noteA;
-
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      });
-
-      keptOrders.push(list[0]);
-      for (let i = 1; i < list.length; i++) {
-        removedOrders.push(list[i]);
-      }
-    }
-  });
-
-  // 同步比對清理重複的買家名冊
-  const buyerGroups = new Map();
-  buyers.forEach(b => {
-    const k = `${(b.name || '').trim().toLowerCase()}___${(b.phone || '').trim()}`;
-    if (!buyerGroups.has(k)) buyerGroups.set(k, []);
-    buyerGroups.get(k).push(b);
-  });
-
-  const keptBuyers = [];
-  const removedBuyers = [];
-  const buyerIdRemap = new Map();
-
-  buyerGroups.forEach(list => {
-    const primary = list[0];
-    keptBuyers.push(primary);
-    for (let i = 1; i < list.length; i++) {
-      removedBuyers.push(list[i]);
-      buyerIdRemap.set(list[i].id, primary.id);
-    }
-  });
-
-  // 將保留訂單中的買家 ID 重新校正對齊
-  keptOrders.forEach(o => {
-    if (buyerIdRemap.has(o.buyerId)) {
-      o.buyerId = buyerIdRemap.get(o.buyerId);
-    }
-  });
-
-  const orderDiff = removedOrders.length;
-  const buyerDiff = removedBuyers.length;
-
-  if (orderDiff === 0 && buyerDiff === 0) {
-    showToast('✨ 系統比對完成：目前沒有任何重複訂單！');
-    return;
-  }
-
-  const msg = `比對出 ${orderDiff} 筆重複訂單、${buyerDiff} 位重複買家！\n\n確定要刪除多餘項目，恢復為 ${keptOrders.length} 筆正常訂單嗎？`;
-  if (!confirm(msg)) return;
-
-  orders = keptOrders;
-  buyers = keptBuyers;
-
-  saveLocalData();
-  renderAll();
-
-  if (isCloudMode()) {
-    showToast(`☁️ 正在清理雲端資料庫中的重複項目…`);
-    try {
-      for (const o of removedOrders) await deleteDoc(getCloudDoc('orders', o.id));
-      for (const b of removedBuyers) await deleteDoc(getCloudDoc('buyers', b.id));
-      for (const o of keptOrders) await setDoc(getCloudDoc('orders', o.id), o);
-      for (const b of keptBuyers) await setDoc(getCloudDoc('buyers', b.id), b);
-      showToast('☁️ 雲端資料庫已同步更新完畢！');
-    } catch (err) {
-      console.warn('Cloud dedup error:', err);
-    }
-  }
-
-  showToast(`🎉 清理成功！已刪除 ${orderDiff} 筆重複訂單，保留 ${orders.length} 筆正確訂單！`);
-}
-window.deduplicateOrdersAndBuyers = deduplicateOrdersAndBuyers;
-
-const dedupOrdersBtn = document.getElementById('dedup-orders-btn');
-if (dedupOrdersBtn) {
-  dedupOrdersBtn.addEventListener('click', deduplicateOrdersAndBuyers);
-}
 
 
