@@ -2871,3 +2871,14 @@ if (exportAllOrdersCsvBtn) {
   exportAllOrdersCsvBtn.addEventListener('click', exportOrdersToCsv);
 }
 
+const clearLocalCacheBtn = document.getElementById('clear-local-cache-btn');
+if (clearLocalCacheBtn) {
+  clearLocalCacheBtn.addEventListener('click', () => {
+    if (confirm('確定要清除手機/本機上的暫存快取嗎？\n\n⚠️ 清除後將清空本機暫存，並重新自雲端載入最新資料。')) {
+      localStorage.removeItem('jc_data');
+      showToast('🧹 已清除本機快取，正在重新整理載入…');
+      setTimeout(() => location.reload(), 600);
+    }
+  });
+}
+
