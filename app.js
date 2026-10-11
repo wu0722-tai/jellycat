@@ -660,9 +660,10 @@ function getOrderCost(o) {
 
 // Dashboard
 function renderDashboard() {
-  const totalRevenue = orders.reduce((s, o) => s + getOrderRevenue(o), 0);
-  const totalCost = orders.reduce((s, o) => s + getOrderCost(o), 0);
-  const totalPaid = orders.reduce((s, o) => {
+  const activeOrders = orders.filter(o => o.status !== 'cancelled');
+  const totalRevenue = activeOrders.reduce((s, o) => s + getOrderRevenue(o), 0);
+  const totalCost = activeOrders.reduce((s, o) => s + getOrderCost(o), 0);
+  const totalPaid = activeOrders.reduce((s, o) => {
     if (o.payment === 'paid') return s + getOrderRevenue(o);
     if (o.payment === 'deposit') return s + (parseFloat(o.deposit)||0);
     return s;
@@ -670,7 +671,14 @@ function renderDashboard() {
   document.getElementById('stat-revenue').textContent = 'NT$' + totalRevenue.toLocaleString();
   document.getElementById('stat-profit').textContent = 'NT$' + Math.round(totalRevenue-totalCost).toLocaleString();
   document.getElementById('stat-unpaid').textContent = 'NT$' + Math.round(totalRevenue-totalPaid).toLocaleString();
-  document.getElementById('stat-orders').textContent = orders.length;
+
+  const totalItemCount = orders.reduce((sum, o) => {
+    if (o.items && Array.isArray(o.items)) {
+      return sum + o.items.reduce((s, i) => s + (parseInt(i.qty, 10) || 1), 0);
+    }
+    return sum + (parseInt(o.qty, 10) || 1);
+  }, 0);
+  document.getElementById('stat-orders').innerHTML = `${orders.length} <span style="font-size:11px;font-weight:700;color:var(--text-muted);display:block">（共 ${totalItemCount} 件商品）</span>`;
 
   const pC = orders.filter(o => o.payment==='paid').length;
   const dC = orders.filter(o => o.payment==='deposit').length;
@@ -687,6 +695,10 @@ function renderDashboard() {
   document.getElementById('status-ordered').textContent = orders.filter(o => o.status==='ordered').length;
   document.getElementById('status-arrived').textContent = orders.filter(o => o.status==='arrived').length;
   document.getElementById('status-shipped').textContent = orders.filter(o => o.status==='shipped').length;
+  const elCancelled = document.getElementById('status-cancelled');
+  if (elCancelled) {
+    elCancelled.textContent = orders.filter(o => o.status==='cancelled').length;
+  }
 
   const recent = orders.slice(0,5);
   const rList = document.getElementById('recent-orders-list');
@@ -2090,7 +2102,7 @@ function renderAll() {
 }
 
 function statusLabel(s) {
-  const map = { pending: '🟠 待購', ordered: '🔵 已下單', arrived: '🟣 已到貨', shipped: '🟢 已出貨' };
+  const map = { pending: '🟠 待購', ordered: '🔵 已下單', arrived: '🟣 已到貨', shipped: '🟢 已出貨', cancelled: '⚪ 已取消' };
   return map[s] || '🟠 待購';
 }
 function paymentLabel(p) {
@@ -2873,4 +2885,135 @@ if (clearLocalCacheBtn) {
     }
   });
 }
+
+// =============================================
+// 一鍵清除重複訂單與買家 (Deduplication Engine)
+// =============================================
+async function deduplicateOrdersAndBuyers() {
+  if (!orders || orders.length === 0) {
+    showToast('目前尚無訂單可去重！');
+    return;
+  }
+
+  function getOrderKey(o) {
+    const b = buyers.find(x => x.id === o.buyerId);
+    const bName = (b?.name || o.buyerName || '').trim().toLowerCase();
+    const items = (o.items && o.items.length) ? o.items : [{ name: o.product, qty: o.qty, variant: o.variant }];
+    const itemsKey = items.map(i => `${(i.name || '').trim()}|${(i.variant || '').trim()}|${i.qty || 1}`).sort().join(';');
+    const rev = getOrderRevenue(o);
+    return `${bName}___${itemsKey}___${rev}`;
+  }
+
+  const groups = new Map();
+  orders.forEach(o => {
+    const k = getOrderKey(o);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(o);
+  });
+
+  const keptOrders = [];
+  const removedOrders = [];
+
+  const statusScore = { shipped: 5, arrived: 4, ordered: 3, pending: 2, cancelled: 1 };
+  const payScore = { paid: 3, deposit: 2, unpaid: 1 };
+
+  groups.forEach(list => {
+    if (list.length === 1) {
+      keptOrders.push(list[0]);
+    } else {
+      // 依進度優先級排序，保留進度最完整的一筆（例如已到貨、已付款）
+      list.sort((a, b) => {
+        const sA = statusScore[a.status] || 0;
+        const sB = statusScore[b.status] || 0;
+        if (sA !== sB) return sB - sA;
+
+        const pA = payScore[a.payment] || 0;
+        const pB = payScore[b.payment] || 0;
+        if (pA !== pB) return pB - pA;
+
+        const depA = parseFloat(a.deposit) || 0;
+        const depB = parseFloat(b.deposit) || 0;
+        if (depA !== depB) return depB - depA;
+
+        const noteA = (a.notes || '').length;
+        const noteB = (b.notes || '').length;
+        if (noteA !== noteB) return noteB - noteA;
+
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+
+      keptOrders.push(list[0]);
+      for (let i = 1; i < list.length; i++) {
+        removedOrders.push(list[i]);
+      }
+    }
+  });
+
+  // 同步比對清理重複的買家名冊
+  const buyerGroups = new Map();
+  buyers.forEach(b => {
+    const k = `${(b.name || '').trim().toLowerCase()}___${(b.phone || '').trim()}`;
+    if (!buyerGroups.has(k)) buyerGroups.set(k, []);
+    buyerGroups.get(k).push(b);
+  });
+
+  const keptBuyers = [];
+  const removedBuyers = [];
+  const buyerIdRemap = new Map();
+
+  buyerGroups.forEach(list => {
+    const primary = list[0];
+    keptBuyers.push(primary);
+    for (let i = 1; i < list.length; i++) {
+      removedBuyers.push(list[i]);
+      buyerIdRemap.set(list[i].id, primary.id);
+    }
+  });
+
+  // 將保留訂單中的買家 ID 重新校正對齊
+  keptOrders.forEach(o => {
+    if (buyerIdRemap.has(o.buyerId)) {
+      o.buyerId = buyerIdRemap.get(o.buyerId);
+    }
+  });
+
+  const orderDiff = removedOrders.length;
+  const buyerDiff = removedBuyers.length;
+
+  if (orderDiff === 0 && buyerDiff === 0) {
+    showToast('✨ 系統比對完成：目前沒有任何重複訂單！');
+    return;
+  }
+
+  const msg = `比對出 ${orderDiff} 筆重複訂單、${buyerDiff} 位重複買家！\n\n確定要刪除多餘項目，恢復為 ${keptOrders.length} 筆正常訂單嗎？`;
+  if (!confirm(msg)) return;
+
+  orders = keptOrders;
+  buyers = keptBuyers;
+
+  saveLocalData();
+  renderAll();
+
+  if (isCloudMode()) {
+    showToast(`☁️ 正在清理雲端資料庫中的重複項目…`);
+    try {
+      for (const o of removedOrders) await deleteDoc(getCloudDoc('orders', o.id));
+      for (const b of removedBuyers) await deleteDoc(getCloudDoc('buyers', b.id));
+      for (const o of keptOrders) await setDoc(getCloudDoc('orders', o.id), o);
+      for (const b of keptBuyers) await setDoc(getCloudDoc('buyers', b.id), b);
+      showToast('☁️ 雲端資料庫已同步更新完畢！');
+    } catch (err) {
+      console.warn('Cloud dedup error:', err);
+    }
+  }
+
+  showToast(`🎉 清理成功！已刪除 ${orderDiff} 筆重複訂單，保留 ${orders.length} 筆正確訂單！`);
+}
+window.deduplicateOrdersAndBuyers = deduplicateOrdersAndBuyers;
+
+const dedupOrdersBtn = document.getElementById('dedup-orders-btn');
+if (dedupOrdersBtn) {
+  dedupOrdersBtn.addEventListener('click', deduplicateOrdersAndBuyers);
+}
+
 
