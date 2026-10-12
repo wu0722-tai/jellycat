@@ -38,6 +38,8 @@ let viewBuyerId = null;
 let selectedBuyerId = null;
 let orderItems = [];
 
+const selectedOrderIds = new Set();
+let currentFilteredOrderIds = [];
 let orderFilter = 'all';
 let orderSearch = '';
 let buyerSearch = '';
@@ -692,6 +694,12 @@ function renderDashboard() {
   const paidEl = document.getElementById('stat-paid');
   if (paidEl) paidEl.textContent = 'NT$' + Math.round(totalPaid).toLocaleString();
   document.getElementById('stat-unpaid').textContent = 'NT$' + Math.round(totalRevenue-totalPaid).toLocaleString();
+  const realizedEl = document.getElementById('stat-realized');
+  if (realizedEl) {
+    const realized = activeOrders.filter(o => o.settleZone === 'done')
+      .reduce((s, o) => s + getBoughtValue(o) - getBoughtCost(o), 0);
+    realizedEl.textContent = 'NT$' + Math.round(realized).toLocaleString();
+  }
 
   const totalItemCount = orders.reduce((sum, o) => {
     if (o.items && Array.isArray(o.items)) {
@@ -743,10 +751,131 @@ function renderDashboard() {
 }
 
 // Orders
+// ===== Settlement helpers =====
+function orderItemList(o) {
+  if (o.items && o.items.length) return o.items;
+  return [{ qty: o.qty || 1, twd: o.twd || 0, gbp: o.gbp || 0, costGbp: o.costGbp, purchasedQty: o.purchasedQty || 0 }];
+}
+function isOrderAllBought(o) {
+  if (['ordered', 'arrived', 'shipped'].includes(o.status)) return true;
+  return orderItemList(o).every(i => (i.purchasedQty || 0) >= (i.qty || 1));
+}
+function getBoughtValue(o) {
+  if (isOrderAllBought(o)) return getOrderRevenue(o);
+  return orderItemList(o).reduce((s, i) => s + Math.min(i.qty || 1, i.purchasedQty || 0) * (i.twd || 0), 0);
+}
+function getBoughtCost(o) {
+  if (isOrderAllBought(o)) return getOrderCost(o);
+  const costRate = settings.costRate || 41.5;
+  return orderItemList(o).reduce((s, i) => {
+    const c = (i.costGbp > 0) ? i.costGbp : (i.gbp || 0);
+    return s + Math.min(i.qty || 1, i.purchasedQty || 0) * c * costRate;
+  }, 0);
+}
+function getOrderPaidAmount(o) {
+  if (o.payment === 'paid') return getOrderRevenue(o);
+  if (o.payment === 'deposit') return parseFloat(o.deposit) || 0;
+  return 0;
+}
+// 結算金額：已付 − 已買齊商品價格；>0 需退買家，<0 買家需補付
+function computeSettlement(o) {
+  const diff = Math.round(getOrderPaidAmount(o) - getBoughtValue(o));
+  const cashStatus = diff > 0 ? 'toRefund' : (diff < 0 ? 'toCollect' : 'none');
+  return { diff, settleAmount: Math.abs(diff), cashStatus };
+}
+// 依訂單現況決定分區：待出貨區 / 緩衝區 / 完成區
+function zoneFor(o) {
+  const cashPending = o.cashStatus === 'toCollect' || o.cashStatus === 'toRefund';
+  if (isOrderAllBought(o) && o.status !== 'shipped') return 'ship';
+  return cashPending ? 'buffer' : 'done';
+}
+function cashLabel(c) {
+  return { none: '無需處理', toCollect: '待收款', toRefund: '待退款', collected: '已收款', refunded: '已退款' }[c] || '';
+}
+function zoneLabel(z) {
+  return { ship: '📮 待出貨區', buffer: '💸 緩衝區', done: '🏁 完成區' }[z] || '';
+}
+
+function updateSettleBar() {
+  const cnt = document.getElementById('selected-count');
+  const btn = document.getElementById('settle-btn');
+  const all = document.getElementById('select-all-orders');
+  if (cnt) cnt.textContent = `已選 ${selectedOrderIds.size} 筆`;
+  if (btn) btn.disabled = selectedOrderIds.size === 0;
+  if (all) {
+    all.checked = currentFilteredOrderIds.length > 0 && currentFilteredOrderIds.every(id => selectedOrderIds.has(id));
+  }
+}
+function toggleOrderSelect(id, checked) {
+  if (checked) selectedOrderIds.add(id); else selectedOrderIds.delete(id);
+  updateSettleBar();
+}
+window.toggleOrderSelect = toggleOrderSelect;
+
+async function markCashDone(id) {
+  const o = orders.find(x => x.id === id); if (!o) return;
+  const next = { ...o, cashStatus: o.cashStatus === 'toRefund' ? 'refunded' : 'collected' };
+  next.settleZone = zoneFor(next);
+  await saveOrder(next);
+  showToast(next.settleZone === 'done' ? '✅ 金流已處理，訂單進入完成區' : '✅ 金流已處理');
+}
+window.markCashDone = markCashDone;
+
+async function undoSettle(id) {
+  const o = orders.find(x => x.id === id); if (!o) return;
+  if (!confirm('確定要撤銷這筆訂單的結算嗎？訂單會回到結算前的狀態。')) return;
+  const next = { ...o };
+  delete next.settleZone; delete next.settleAmount; delete next.cashStatus; delete next.settledAt;
+  await saveOrder(next);
+  showToast('↩️ 已撤銷結算');
+}
+window.undoSettle = undoSettle;
+
+let pendingSettle = [];
+function openSettlePreview() {
+  const targets = orders.filter(o => selectedOrderIds.has(o.id) && o.status !== 'cancelled');
+  if (!targets.length) { showToast('請先勾選要結算的訂單'); return; }
+  pendingSettle = targets.map(o => {
+    const s = computeSettlement(o);
+    const next = { ...o, settleAmount: s.settleAmount, cashStatus: s.cashStatus, settledAt: Date.now() };
+    next.settleZone = zoneFor(next);
+    return { before: o, next, diff: s.diff };
+  });
+  const body = document.getElementById('settle-preview-body');
+  body.innerHTML = pendingSettle.map(p => {
+    const buyer = buyers.find(b => b.id === p.before.buyerId);
+    const bought = getBoughtValue(p.before), rev = getOrderRevenue(p.before);
+    const partial = !isOrderAllBought(p.before);
+    let cash = '金流已結清';
+    if (p.next.cashStatus === 'toRefund') cash = `<b style="color:var(--yellow)">需退買家 NT$${p.diff.toLocaleString()}</b>`;
+    if (p.next.cashStatus === 'toCollect') cash = `<b style="color:var(--red)">買家還需補付 NT$${Math.abs(p.diff).toLocaleString()}</b>`;
+    return `<div class="settle-row">
+      <div class="settle-row-top"><span>👤 ${escapeHtml(buyer?.name || '未知買家')}</span><span class="settle-zone z-${p.next.settleZone}">${zoneLabel(p.next.settleZone)}</span></div>
+      <div class="settle-row-sub">${partial ? `未買齊：已買齊商品 NT$${bought.toLocaleString()} / 訂單 NT$${rev.toLocaleString()}` : `已買齊：訂單 NT$${rev.toLocaleString()}`} · 已付 NT$${getOrderPaidAmount(p.before).toLocaleString()}</div>
+      <div class="settle-row-sub">${cash}</div>
+    </div>`;
+  }).join('');
+  openModal('settle-modal');
+}
+
+async function confirmSettle() {
+  const list = pendingSettle; pendingSettle = [];
+  closeModal('settle-modal');
+  for (const p of list) await saveOrder(p.next);
+  selectedOrderIds.clear();
+  renderOrders();
+  showToast(`🧾 已結算 ${list.length} 筆訂單`);
+}
+
 function renderOrders() {
   const list = document.getElementById('orders-list');
   let filtered = orders.filter(o => {
-    if (orderFilter!=='all' && (o.status||'pending')!==orderFilter) return false;
+    if (orderFilter === 'done') { if (o.settleZone !== 'done') return false; }
+    else if (orderFilter === 'ship' || orderFilter === 'buffer') { if (o.settleZone !== orderFilter) return false; }
+    else {
+      if (o.settleZone === 'done') return false;
+      if (orderFilter!=='all' && (o.status||'pending')!==orderFilter) return false;
+    }
     if (orderSearch) {
       const buyer = buyers.find(b => b.id===o.buyerId);
       const q = orderSearch.toLowerCase();
@@ -755,8 +884,10 @@ function renderOrders() {
     }
     return true;
   });
+  currentFilteredOrderIds = filtered.filter(o => o.status !== 'cancelled').map(o => o.id);
   if (!filtered.length) {
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${orders.length===0?'還沒有訂單，點右上角新增！':'沒有符合的訂單'}</p></div>`;
+    updateSettleBar();
     return;
   }
   const costRate = settings.costRate || 41.5;
@@ -776,8 +907,15 @@ function renderOrders() {
           return `<span class="order-item-tag${done?' tag-done':''}" style="--pct:${pct}%">${escapeHtml(i.name)}${i.variant?` (${escapeHtml(i.variant)})`:''} ×${q}${prog}</span>`;
         }).join('')
       : `<span class="order-item-tag">${escapeHtml(o.product||'')} ×${o.qty||1}</span>`;
+    const settleInfo = o.settleZone ? `<div class="order-row3 settle-info">
+        <span class="settle-zone z-${o.settleZone}">${zoneLabel(o.settleZone)}</span>
+        <span>💳 ${cashLabel(o.cashStatus)}${(o.cashStatus==='toCollect'||o.cashStatus==='collected')?` 補付 NT$${(o.settleAmount||0).toLocaleString()}`:(o.cashStatus==='toRefund'||o.cashStatus==='refunded')?` 退款 NT$${(o.settleAmount||0).toLocaleString()}`:''}</span>
+        ${(o.cashStatus==='toCollect'||o.cashStatus==='toRefund')?`<button class="link-btn" onclick="event.stopPropagation();markCashDone('${o.id}')">✅ 標記${o.cashStatus==='toRefund'?'已退款':'已收款'}</button>`:''}
+        <button class="link-btn" onclick="event.stopPropagation();undoSettle('${o.id}')">↩️ 撤銷結算</button>
+      </div>` : '';
+    const selBox = o.status === 'cancelled' ? '' : `<input type="checkbox" class="order-select" ${selectedOrderIds.has(o.id)?'checked':''} onclick="event.stopPropagation()" onchange="toggleOrderSelect('${o.id}', this.checked)" />`;
     return `<div class="order-card s-${o.status||'pending'}" onclick="openEditOrder('${o.id}')">
-      <div class="order-row1"><div class="order-product">${tags}</div><div class="order-price">NT$${rev.toLocaleString()}</div></div>
+      <div class="order-row1">${selBox}<div class="order-product">${tags}</div><div class="order-price">NT$${rev.toLocaleString()}</div></div>
       <div class="order-row2">
         <div class="order-buyer">👤 ${escapeHtml(buyer?.name||'未知買家')}</div>
         <div class="order-badges"><span class="badge ${o.status||'pending'}">${statusLabel(o.status)}</span><span class="badge ${o.payment||'unpaid'}">${paymentLabel(o.payment)}</span></div>
@@ -788,9 +926,19 @@ function renderOrders() {
       </div>
       ${o.deposit&&o.payment==='deposit'?`<div class="order-row3" style="color:var(--yellow)">💛 已付訂金 NT$${parseFloat(o.deposit).toLocaleString()}</div>`:''}
       ${o.notes?`<div class="order-row3" style="margin-top:4px">📝 ${escapeHtml(o.notes)}</div>`:''}
+      ${settleInfo}
     </div>`;
   }).join('');
+  updateSettleBar();
 }
+
+document.getElementById('select-all-orders').addEventListener('change', e => {
+  if (e.target.checked) currentFilteredOrderIds.forEach(id => selectedOrderIds.add(id));
+  else currentFilteredOrderIds.forEach(id => selectedOrderIds.delete(id));
+  renderOrders();
+});
+document.getElementById('settle-btn').addEventListener('click', openSettlePreview);
+document.getElementById('confirm-settle-btn').addEventListener('click', confirmSettle);
 
 document.querySelectorAll('.filter-chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -975,6 +1123,7 @@ function openAddOrder() {
   document.getElementById('deposit-amount-group').style.display='none';
   document.getElementById('delete-order-btn').style.display='none';
   document.getElementById('save-order-btn').textContent='新增代購單';
+  document.getElementById('cash-status-group').style.display='none';
   renderOrderItems(); renderProductPicker(); openModal('order-modal');
 }
 
@@ -1006,6 +1155,15 @@ function openEditOrder(id) {
   document.getElementById('deposit-amount-group').style.display=o.payment==='deposit'?'block':'none';
   document.getElementById('delete-order-btn').style.display='block';
   document.getElementById('save-order-btn').textContent='儲存代購單';
+  const cashGroup = document.getElementById('cash-status-group');
+  if (o.settleZone) {
+    cashGroup.style.display = 'block';
+    document.getElementById('order-cash-status').value = o.cashStatus || 'none';
+    const amt = o.settleAmount || 0;
+    document.getElementById('order-settle-hint').textContent = `${zoneLabel(o.settleZone)}｜` + (o.cashStatus==='toRefund'||o.cashStatus==='refunded' ? `需退買家 NT$${amt.toLocaleString()}` : (o.cashStatus==='toCollect'||o.cashStatus==='collected') ? `買家需補付 NT$${amt.toLocaleString()}` : '金流已結清');
+  } else {
+    cashGroup.style.display = 'none';
+  }
   renderOrderItems(); renderProductPicker(); openModal('order-modal');
 }
 window.openEditOrder=openEditOrder;
@@ -1620,6 +1778,13 @@ document.getElementById('save-order-btn').addEventListener('click', async () => 
   const deposit = payment === 'deposit' ? (parseFloat(document.getElementById('order-deposit').value) || 0) : 0;
   const notes = document.getElementById('order-notes').value.trim();
   
+  const existingOrder = editOrderId ? orders.find(o => o.id === editOrderId) : null;
+  const cashStatusInput = document.getElementById('order-cash-status');
+  let newCashStatus = existingOrder?.cashStatus;
+  if (existingOrder?.settleZone && cashStatusInput && cashStatusInput.value) {
+    newCashStatus = cashStatusInput.value;
+  }
+
   const orderData = {
     id: editOrderId || Date.now().toString(),
     buyerId: finalBuyerId,
@@ -1628,9 +1793,16 @@ document.getElementById('save-order-btn').addEventListener('click', async () => 
     payment: payment,
     deposit: deposit,
     notes: notes,
-    createdAt: editOrderId ? (orders.find(o => o.id === editOrderId)?.createdAt || Date.now()) : Date.now()
+    createdAt: existingOrder ? (existingOrder.createdAt || Date.now()) : Date.now()
   };
-  
+
+  if (existingOrder?.settleZone) {
+    orderData.settleAmount = existingOrder.settleAmount;
+    orderData.cashStatus = newCashStatus || existingOrder.cashStatus || 'none';
+    orderData.settledAt = existingOrder.settledAt || Date.now();
+    orderData.settleZone = zoneFor(orderData);
+  }
+
   await saveOrder(orderData);
   closeModal('order-modal');
   showToast(editOrderId ? '代購單已更新 ✅' : '代購單已新增 🎉');
@@ -2967,7 +3139,7 @@ function exportOrdersToCsv() {
       '訂單編號', '建立時間', '買家名稱', '買家電話', '取件門市/地址',
       '訂購商品明細', '商品總件數', '英鎊標價(£)', '成本匯率',
       '採購成本(NT$)', '總售價(NT$)', '已付訂金(NT$)', '預估獲利(NT$)',
-      '訂單狀態', '付款狀態', '備註'
+      '訂單狀態', '付款狀態', '結算分區', '金流狀態', '結算差額(NT$)', '備註'
     ];
 
     const rows = orders.map(o => {
@@ -3008,6 +3180,9 @@ function exportOrdersToCsv() {
         profit,
         statusLabel(o.status),
         paymentLabel(o.payment),
+        zoneLabel(o.settleZone) || '未結算',
+        cashLabel(o.cashStatus) || '—',
+        o.settleAmount || 0,
         o.notes || ''
       ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
     });

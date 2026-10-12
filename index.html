@@ -105,7 +105,7 @@
             <div class="stat-icon">💰</div>
             <div class="stat-body">
               <div class="stat-value" id="stat-revenue">NT$0</div>
-              <div class="stat-label">總收入（售價合計）</div>
+              <div class="stat-label">預估收入（售價合計）</div>
             </div>
           </div>
           <div class="stat-card green">
@@ -113,6 +113,13 @@
             <div class="stat-body">
               <div class="stat-value" id="stat-profit">NT$0</div>
               <div class="stat-label">預估總利潤</div>
+            </div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-body">
+              <div class="stat-value" id="stat-realized">NT$0</div>
+              <div class="stat-label">已實現收益（完成區）</div>
             </div>
           </div>
           <div class="stat-card blue">
@@ -205,6 +212,14 @@
           <button class="filter-chip" data-filter="arrived">已到貨</button>
           <button class="filter-chip" data-filter="shipped">已出貨</button>
           <button class="filter-chip" data-filter="cancelled">已取消</button>
+          <button class="filter-chip" data-filter="ship">📮 待出貨區</button>
+          <button class="filter-chip" data-filter="buffer">💸 緩衝區</button>
+          <button class="filter-chip" data-filter="done">🏁 完成區</button>
+        </div>
+        <div class="settle-bar" id="settle-bar">
+          <label class="settle-select-all"><input type="checkbox" id="select-all-orders" /> 全選</label>
+          <span id="selected-count" class="settle-count">已選 0 筆</span>
+          <button class="primary-btn settle-btn" id="settle-btn" disabled>🧾 結算</button>
         </div>
         <div class="search-wrap">
           <input type="text" id="order-search" class="search-input" placeholder="🔍 搜尋買家或商品名稱…" />
@@ -575,6 +590,17 @@
           <label class="form-label">訂金金額（台幣）</label>
           <input type="number" id="order-deposit" class="form-input" placeholder="e.g. 500" min="0" />
         </div>
+        <div class="form-group" id="cash-status-group" style="display:none">
+          <label class="form-label">結算金流狀態</label>
+          <div id="order-settle-hint" class="settle-hint"></div>
+          <select id="order-cash-status" class="form-input form-select">
+            <option value="none">無需處理</option>
+            <option value="toCollect">⏳ 待收款（買家要補付）</option>
+            <option value="toRefund">⏳ 待退款（要退買家）</option>
+            <option value="collected">✅ 已收款</option>
+            <option value="refunded">✅ 已退款</option>
+          </select>
+        </div>
         <div class="form-group">
           <label class="form-label">備註</label>
           <textarea id="order-notes" class="form-input form-textarea" placeholder="任何備註…" rows="2"></textarea>
@@ -582,6 +608,22 @@
         <div class="modal-actions">
           <button class="danger-btn" id="delete-order-btn" style="display:none">刪除訂單</button>
           <button class="primary-btn" id="save-order-btn">新增代購單</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settle Preview Modal -->
+  <div class="modal-overlay" id="settle-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3>🧾 訂單結算預覽</h3>
+        <button class="modal-close" data-modal="settle-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="settle-preview-body"></div>
+        <div class="modal-actions">
+          <button class="primary-btn" id="confirm-settle-btn">確認結算</button>
         </div>
       </div>
     </div>
