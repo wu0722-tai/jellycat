@@ -767,7 +767,14 @@ function renderOrders() {
     const sellingGbp = getOrderGbp(o), costGbp = getOrderCostGbp(o);
     const hasDiffCost = Math.abs(sellingGbp - costGbp) > 0.001;
     const tags = o.items&&o.items.length>0
-      ? o.items.map(i=>`<span class="order-item-tag">${escapeHtml(i.name)}${i.variant?` (${escapeHtml(i.variant)})`:''} ×${i.qty||1}</span>`).join('')
+      ? o.items.map(i=>{
+          const q = i.qty||1;
+          const pq = Math.min(q, i.purchasedQty||0);
+          const pct = Math.round(pq/q*100);
+          const done = pq >= q;
+          const prog = q > 1 ? ` <b class="tag-progress">${pq}/${q}</b>` : '';
+          return `<span class="order-item-tag${done?' tag-done':''}" style="--pct:${pct}%">${escapeHtml(i.name)}${i.variant?` (${escapeHtml(i.variant)})`:''} ×${q}${prog}</span>`;
+        }).join('')
       : `<span class="order-item-tag">${escapeHtml(o.product||'')} ×${o.qty||1}</span>`;
     return `<div class="order-card s-${o.status||'pending'}" onclick="openEditOrder('${o.id}')">
       <div class="order-row1"><div class="order-product">${tags}</div><div class="order-price">NT$${rev.toLocaleString()}</div></div>
