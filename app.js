@@ -772,7 +772,7 @@ function renderOrders() {
           const pq = Math.min(q, i.purchasedQty||0);
           const pct = Math.round(pq/q*100);
           const done = pq >= q;
-          const prog = q > 1 ? ` <b class="tag-progress">${pq}/${q}</b>` : '';
+          const prog = (q > 1 && pq > 0) ? ` <b class="tag-progress">${pq}/${q}</b>` : '';
           return `<span class="order-item-tag${done?' tag-done':''}" style="--pct:${pct}%">${escapeHtml(i.name)}${i.variant?` (${escapeHtml(i.variant)})`:''} ×${q}${prog}</span>`;
         }).join('')
       : `<span class="order-item-tag">${escapeHtml(o.product||'')} ×${o.qty||1}</span>`;
