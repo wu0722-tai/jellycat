@@ -259,7 +259,7 @@ async function loadData() {
     unsubscribers.push(onSnapshot(getCloudCol('inventory'), snap => {
       inventory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       saveLocalData();
-      renderInventory(); renderProducts(); renderProductPicker();
+      renderInventory(); renderProducts(); renderProductPicker(); renderPending();
       if (typeof renderOrderItems === 'function') renderOrderItems();
     }, err => {
       console.warn('Inventory cloud sync error:', err.message);
@@ -1849,10 +1849,30 @@ function renderPending() {
     }
   });
 
+  // 扣除現有庫存：實際代購數 = 未購買數 − 庫存（同一庫存品項只扣一次）
+  const usedStock = {};
+  Object.values(agg).forEach(it => {
+    const invItem = findInventoryItem(null, it.name, it.variant);
+    it.stockDeduct = 0;
+    if (invItem) {
+      const used = usedStock[invItem.id] || 0;
+      const avail = Math.max(0, (invItem.stockQty || 0) - used);
+      it.stockDeduct = Math.min(avail, it.qty);
+      usedStock[invItem.id] = used + it.stockDeduct;
+    }
+    it.needQty = it.qty - it.stockDeduct;
+  });
+  totalPendingQty = 0;
+  totalPendingGbp = 0;
+  Object.values(agg).forEach(it => {
+    totalPendingQty += it.needQty;
+    totalPendingGbp += it.costGbp * it.needQty;
+  });
+
   document.getElementById('pending-count').textContent = totalPendingQty;
   document.getElementById('pending-gbp').textContent = `£${totalPendingGbp.toFixed(2)}`;
 
-  const items = Object.values(agg);
+  const items = Object.values(agg).filter(it => it.needQty > 0);
   if (items.length === 0) {
     list.innerHTML = `
       <div class="empty-state">
@@ -1874,11 +1894,12 @@ function renderPending() {
           ${item.variant ? `<span class="product-variant">${escapeHtml(item.variant)}</span>` : ''}
         </div>
         <div class="product-price-row">
-          <span class="product-gbp">£${(item.costGbp * item.qty).toFixed(2)}</span>
-          <span class="product-meta">（${hasDiffCost ? `成本 £${item.costGbp} · 標價 £${item.gbp}` : `£${item.gbp}`} × ${item.qty}）</span>
+          <span class="product-gbp">£${(item.costGbp * item.needQty).toFixed(2)}</span>
+          <span class="product-meta">（${hasDiffCost ? `成本 £${item.costGbp} · 標價 £${item.gbp}` : `£${item.gbp}`} × ${item.needQty}）</span>
         </div>
         <div class="product-meta" style="margin-top:4px">
           買家：${item.orders.map(x => `${escapeHtml(x.buyerName)} (待買${x.qty})`).join('、')}
+          ${item.stockDeduct > 0 ? `<div style="color:var(--green);margin-top:2px">📦 訂單未購 ${item.qty}，庫存抵扣 ${item.stockDeduct}</div>` : ''}
         </div>
         <div class="purchase-progress" style="margin-top:6px">
           <div class="progress-bar-mini"><div class="progress-fill-mini" style="width:${progressPct}%"></div></div>
@@ -1886,7 +1907,7 @@ function renderPending() {
         </div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-        <span class="badge pending" style="font-size:14px;padding:6px 12px">待買 ×${item.qty}</span>
+        <span class="badge pending" style="font-size:14px;padding:6px 12px">待買 ×${item.needQty}</span>
         <button class="link-btn" style="font-size:11px" onclick="markItemOrdersOrdered('${item.orders.map(o=>o.orderId).join(',')}')">全部標記為已下單</button>
       </div>
     </div>
