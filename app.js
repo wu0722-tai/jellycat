@@ -689,6 +689,8 @@ function renderDashboard() {
   }, 0);
   document.getElementById('stat-revenue').textContent = 'NT$' + totalRevenue.toLocaleString();
   document.getElementById('stat-profit').textContent = 'NT$' + Math.round(totalRevenue-totalCost).toLocaleString();
+  const paidEl = document.getElementById('stat-paid');
+  if (paidEl) paidEl.textContent = 'NT$' + Math.round(totalPaid).toLocaleString();
   document.getElementById('stat-unpaid').textContent = 'NT$' + Math.round(totalRevenue-totalPaid).toLocaleString();
 
   const totalItemCount = orders.reduce((sum, o) => {
