@@ -910,7 +910,11 @@ function renderOrders() {
   const costRate = settings.costRate || 41.5;
   list.innerHTML = filtered.map(o => {
     const buyer = buyers.find(b => b.id===o.buyerId);
-    const cost = getOrderCost(o), rev = getOrderRevenue(o), profit = rev-cost;
+    const isDone = o.settleZone === 'done';
+    const estRev = getOrderRevenue(o);
+    const cost = isDone ? getBoughtCost(o) : getOrderCost(o);
+    const rev = isDone ? getBoughtValue(o) : estRev;
+    const profit = rev-cost;
     const pColor = profit>=0 ? 'var(--green)' : 'var(--red)';
     const sellingGbp = getOrderGbp(o), costGbp = getOrderCostGbp(o);
     const hasDiffCost = Math.abs(sellingGbp - costGbp) > 0.001;
@@ -932,14 +936,14 @@ function renderOrders() {
       </div>` : '';
     const selBox = o.status === 'cancelled' ? '' : `<input type="checkbox" class="order-select" ${selectedOrderIds.has(o.id)?'checked':''} onclick="event.stopPropagation()" onchange="toggleOrderSelect('${o.id}', this.checked)" />`;
     return `<div class="order-card s-${o.status||'pending'}" onclick="openEditOrder('${o.id}')">
-      <div class="order-row1">${selBox}<div class="order-product">${tags}</div><div class="order-price">NT$${rev.toLocaleString()}</div></div>
+      <div class="order-row1">${selBox}<div class="order-product">${tags}</div><div class="order-price">${isDone ? `<span style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;text-align:right">實際售價${rev!==estRev?` <s>NT$${estRev.toLocaleString()}</s>`:''}</span>` : ''}NT$${rev.toLocaleString()}</div></div>
       <div class="order-row2">
         <div class="order-buyer">👤 ${escapeHtml(buyer?.name||'未知買家')}</div>
         <div class="order-badges"><span class="badge ${o.status||'pending'}">${statusLabel(o.status)}</span><span class="badge ${o.payment||'unpaid'}">${paymentLabel(o.payment)}</span></div>
       </div>
       <div class="order-row3" style="display:flex;justify-content:space-between">
         <span class="order-gbp">${hasDiffCost ? `標價 £${sellingGbp.toFixed(2)} (成本 £${costGbp.toFixed(2)})` : `£${sellingGbp.toFixed(2)}`} → 採購成本 NT$${Math.round(cost).toLocaleString()} (£1=NT$${costRate})</span>
-        <span style="color:${pColor};font-weight:800;font-size:11px">利潤 NT$${Math.round(profit).toLocaleString()}</span>
+        <span style="color:${pColor};font-weight:800;font-size:11px">${isDone ? '實際利潤' : '預估利潤'} NT$${Math.round(profit).toLocaleString()}</span>
       </div>
       ${o.deposit&&o.payment==='deposit'?`<div class="order-row3" style="color:var(--yellow)">💛 已付訂金 NT$${parseFloat(o.deposit).toLocaleString()}</div>`:''}
       ${o.notes?`<div class="order-row3" style="margin-top:4px">📝 ${escapeHtml(o.notes)}</div>`:''}
