@@ -786,8 +786,13 @@ function computeSettlement(o) {
 // 依訂單現況決定分區：待出貨區 / 緩衝區 / 完成區
 function zoneFor(o) {
   const cashPending = o.cashStatus === 'toCollect' || o.cashStatus === 'toRefund';
-  if (isOrderAllBought(o) && o.status !== 'shipped') return 'ship';
-  return cashPending ? 'buffer' : 'done';
+  // All orders that have not been shipped belong in the 'ship' (待出貨) zone,
+  // regardless of purchase completion or cash status.
+  if (o.status !== 'shipped') return 'ship';
+  // Shipped orders with unresolved cash flow go to the 'buffer' zone.
+  if (cashPending) return 'buffer';
+  // Otherwise, the order is fully settled and placed in the 'done' zone.
+  return 'done';
 }
 function cashLabel(c) {
   return { none: '無需處理', toCollect: '待收款', toRefund: '待退款', collected: '已收款', refunded: '已退款' }[c] || '';
