@@ -885,6 +885,23 @@ function renderOrders() {
     return true;
   });
   currentFilteredOrderIds = filtered.filter(o => o.status !== 'cancelled').map(o => o.id);
+  const sumEl = document.getElementById('cash-summary');
+  if (sumEl) {
+    if (orderFilter === 'ship' || orderFilter === 'buffer') {
+      const zoneOrders = orders.filter(o => o.settleZone === 'ship' || o.settleZone === 'buffer');
+      const refund = zoneOrders.filter(o => o.cashStatus === 'toRefund');
+      const collect = zoneOrders.filter(o => o.cashStatus === 'toCollect');
+      const refundSum = refund.reduce((s, o) => s + (o.settleAmount || 0), 0);
+      const collectSum = collect.reduce((s, o) => s + (o.settleAmount || 0), 0);
+      sumEl.style.display = 'grid';
+      sumEl.innerHTML = `
+        <div class="cash-sum-title">📮 待出貨區 + 💸 緩衝區 合計</div>
+        <div class="cash-sum-box refund"><span class="cash-sum-lbl">應退買家</span><span class="cash-sum-val">NT$${refundSum.toLocaleString()}</span><span class="cash-sum-cnt">${refund.length} 筆</span></div>
+        <div class="cash-sum-box collect"><span class="cash-sum-lbl">應向買家補收</span><span class="cash-sum-val">NT$${collectSum.toLocaleString()}</span><span class="cash-sum-cnt">${collect.length} 筆</span></div>`;
+    } else {
+      sumEl.style.display = 'none';
+    }
+  }
   if (!filtered.length) {
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${orders.length===0?'還沒有訂單，點右上角新增！':'沒有符合的訂單'}</p></div>`;
     updateSettleBar();
